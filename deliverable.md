@@ -187,3 +187,31 @@ wrote 54 lots -> js/data/lots.js
 6. **难度带只到 `par 27`**：再往上（例如 5 堆 9 枚）自有盒超过 10 万状态，本仓的引擎上限是 60,000，
    所以没做——不是"觉得太难"，是 `gridOf` 会拒绝。
 7. **没有做视觉/交互的人工评审**：只有 6 张台架截图与断言；`toast` 在结算时会盖住货架一角（纯观感，未改）。
+
+## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
+
+发布 sha `0b96886`，CI trigger `2dcfe13` → Actions `success`。
+
+| 资源 | 结果 |
+| --- | --- |
+| `/`（index.html） | 200 / 3,499 B |
+| `js/main.js` | 200 / 17,184 B |
+| `css/game.css` | 200 / 4,852 B |
+| `js/data/lots.js` | 200 / 14,793 B |
+| `<title>` | `尼姆堆 · NIM`，与 README 首行一致 |
+
+主代理门禁（本机 headless Chrome，DevTools :9353 / web :5193）：`npm run check` rc=0；
+node **55 / 0 fail**；浏览器 **126 / 0 fail** 且 `=== ALL GREEN ===`；zero-deps、0 个二进制资产、
+core purity clean、无幽灵导出、无密钥样式串。
+
+一处必须写下来的返工：发布前门禁报过 `ghostExports(js/core/heaps.js: encode, decode, describe)`。
+查证后三者在全仓（含 `test/`、`tools/`，也含 heaps.js 自身）都是**零引用**：分享链接走的是
+`#/lot/<id>`（`js/main.js:372`），棋谱文字由 `js/main.js:261` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
+比 `describe` 更信息完整）。所以按"确定未使用就彻底删掉"处理，三个函数一并删除；删掉 `describe`
+之后 `taken` 也失去唯一调用者，同样移除。README/DESIGN/deliverable 三处文档都从未提到这四个名字
+（已 grep 核对），因此不产生文档漂移。
+
+还有一处是**测量工具自己的错**，记录在此以免后人误读为仓库缺陷：本仓 `tools/harness.mjs` 打的是
+`rows: N asserts: K fail: M`（`fail` 在最后），而主代理的审计脚本原先按 `rows: N fail: M` 相邻匹配，
+于是把 55 行真实断言读成 `node 0/0`，一度让门禁给出"质量不达标"的假结论。脚本改为按关键字位置取值后，
+本仓的 55/0 与作者自述完全一致。
