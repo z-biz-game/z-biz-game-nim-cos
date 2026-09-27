@@ -390,12 +390,6 @@ el.wipe.addEventListener('click', () => {
 
 window.addEventListener('hashchange', applyRoute);
 window.addEventListener('resize', draw);
-// Runner viewports gain a scrollbar after first paint, narrowing content without firing window 'resize';
-// observing the canvas keeps the backing store matched to the box the hit-tests use.
-{
-  const cv = (typeof view !== 'undefined' && view.canvas) || document.querySelector('canvas');
-  if (cv && typeof ResizeObserver === 'function') new ResizeObserver(() => view.measure()).observe(cv);
-}
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   if (ev.key === 'Escape') { session.selected = -1; draw(); return; }
