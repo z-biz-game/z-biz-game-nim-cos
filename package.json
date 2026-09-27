@@ -1,0 +1,39 @@
+{
+  "name": "nim",
+  "version": "1.0.0",
+  "description": "尼姆堆 NIM — 浏览器原生 Nim. 每个局面的 outcome / winMoves / par 都由 Bouton 闭式给出，并被一次完整倒推分析（retrograde）在全界图上逐态复算。",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "serve": "node server.cjs",
+    "dev": "node server.cjs 5194",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "nim",
+    "bouton-theorem",
+    "nim-sum",
+    "retrograde-analysis",
+    "zero-dependency",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.nim",
+    "productName": "NIM",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}
