@@ -190,7 +190,15 @@ wrote 54 lots -> js/data/lots.js
 
 ## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
 
-发布 sha `0b96886`，CI trigger `2dcfe13` → Actions `success`。
+发布 sha `0b96886`，CI trigger `2dcfe13`。
+
+**这一节的浏览器数字需要在真机上复核**：主代理 2026-09-27 10:49Z 用 GitHub check-runs 直接查 HEAD 得到
+`deploy=success | build=success | unit=success | browser=failure`——也就是说本仓在 GitHub runner 上的
+无头浏览器 job 是**红的**，而下面这些数字来自本机（Mac，devicePixelRatio 2、窗口较高）的实跑。
+本仓的 node/unit/build 三层在 runner 上确为 success；浏览器层的 runner 失败与 matchwork 查到的同类原因一致
+（runner 视口下 canvas 的 CSS 高度停在未布局的默认 300，见交付侧工具任务记录）。
+在补上"按 runner 形状（`--force-device-scale-factor=1` + 小窗口）跑一遍"的门禁之前，
+下面的 126/0 应读作"本机全绿、线上 runner 未通过"。
 
 | 资源 | 结果 |
 | --- | --- |
