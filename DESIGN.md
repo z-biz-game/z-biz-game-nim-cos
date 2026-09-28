@@ -95,7 +95,16 @@ js/main.js     DOM、路由、存档、面板；把 window.nim 挂出来给台�
 
 DPR：`render()` 每帧按 `devicePixelRatio`（夹在 1..3）重设 `canvas.width/height` 并 `setTransform`，
 CSS 高度由内容（最大堆 + 一条空框）决定，所以堆多的关会自动长高。
-台架有一条断言盯着"canvas 不是未样式化的 300×150"（实跑回显 `canvas backing store: 620x180`）。
+台架有一条断言盯着"canvas 不是未样式化的 300×150"（本机 overlay 滚动条下回显
+`canvas backing store: 620x180`，经典 15px 滚动条下 `605x180`）。
+
+宽度不是我们算出来的，是页面借给我们的：`#board` 是 `width:100%`，它的宽由"这一列多宽"决定，
+这一列的宽又由"页面是否纵向溢出"决定。面板填满内容后页面越过视口，在滚动条占位的平台上会有
+15px 从这一列消失，而窗口尺寸没变、`resize` 不会响——按 620 定的 backing store 就一直在画一只
+605 的盒。两处各自封住这条边：`css/game.css` 给根滚动容器 `scrollbar-gutter: stable`（实测同一只
+`width:100%` 的盒在溢出与不溢出两样都是同一宽度，overlay 平台预留 0）；`js/view.js` 挂
+`ResizeObserver`，盒宽与 `layout()` 上次用的宽不一致就重画（比的是宽度，自己改高度不会把自己
+再触发一遍）。`destroy()` 会断开这个 observer。
 
 ## 5. 路由、存档与确定性
 

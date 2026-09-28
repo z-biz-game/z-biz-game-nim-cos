@@ -189,6 +189,21 @@ export function createView(canvas, handlers = {}) {
   canvas.addEventListener('pointerdown', onTap);
   window.addEventListener('resize', () => render());
 
+  // The box also moves for reasons this file cannot see: the panel fills with text, the page
+  // tips past the viewport, and on a platform where scrollbars take room that narrows the
+  // column the canvas sits in without changing the window — so no `resize` fires and the
+  // backing store we sized from the wider read stays on screen. game.css reserves the gutter,
+  // which removes the feedback entirely; this covers a browser where `scrollbar-gutter` is
+  // unsupported (Safari) by re-measuring when the box itself changes. Comparing against the
+  // width `layout()` last used is what keeps this from re-rendering its own height change.
+  let observed = null;
+  if (typeof ResizeObserver === 'function') {
+    observed = new ResizeObserver(() => {
+      if (Math.max(240, canvas.clientWidth || 320) !== cssW) render();
+    });
+    observed.observe(canvas);
+  }
+
   return {
     render,
     point,
@@ -196,6 +211,9 @@ export function createView(canvas, handlers = {}) {
     layout: () => cols.map((c) => ({ i: c.i, size: c.size, x: c.x, w: c.w, band })),
     get state() { return state; },
     get size() { return { cssW, cssH, band }; },
-    destroy() { canvas.removeEventListener('pointerdown', onTap); },
+    destroy() {
+      canvas.removeEventListener('pointerdown', onTap);
+      if (observed) observed.disconnect();
+    },
   };
 }

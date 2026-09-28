@@ -15,6 +15,10 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+/* The board is a percentage-width box, so the page tipping into vertical overflow takes the
+   scrollbar's room out of the column it lives in. Reserving the gutter gives both overflow
+   states the same content width; where scrollbars overlay, nothing is reserved. */
+html { scrollbar-gutter: stable; }
 body {
   font: 15px/1.5 ui-monospace, "SFMono-Regular", "Menlo", "Cascadia Mono", monospace;
   -webkit-text-size-adjust: 100%;

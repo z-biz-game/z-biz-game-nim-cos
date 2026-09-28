@@ -192,13 +192,43 @@ wrote 54 lots -> js/data/lots.js
 
 发布 sha `0b96886`，CI trigger `2dcfe13`。
 
-**这一节的浏览器数字需要在真机上复核**：主代理 2026-09-27 10:49Z 用 GitHub check-runs 直接查 HEAD 得到
-`deploy=success | build=success | unit=success | browser=failure`——也就是说本仓在 GitHub runner 上的
-无头浏览器 job 是**红的**，而下面这些数字来自本机（Mac，devicePixelRatio 2、窗口较高）的实跑。
-本仓的 node/unit/build 三层在 runner 上确为 success；浏览器层的 runner 失败与 matchwork 查到的同类原因一致
-（runner 视口下 canvas 的 CSS 高度停在未布局的默认 300，见交付侧工具任务记录）。
-在补上"按 runner 形状（`--force-device-scale-factor=1` + 小窗口）跑一遍"的门禁之前，
-下面的 126/0 应读作"本机全绿、线上 runner 未通过"。
+**runner 上的浏览器 job 一直是红的，2026-09-28 定位并修好了。** 主代理 2026-09-27 10:49Z 用
+GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success | browser=failure`，
+红的只有 `@boot` 的一行：`the canvas is laid out, not the unstyled 300x150 default`，detail 是
+`{"css": [605, 180], "backing": [620, 180], "dpr": 1}`——不是"样式没到"，是 backing store 比
+浏览器真正显示的盒**宽 15px**。本节此前写的"与 matchwork 同类：canvas 停在未布局的默认 300"
+是没有依据的猜测，已按实测推翻。
+
+根因（本机加 `--disable-features=OverlayScrollbar,OverlayScrollbars,FlushOverlayScrollbars`
+在 Mac 上复刻 Linux 的经典滚动条后测得，红/绿两侧的复现数字与 runner 一模一样）：`#board` 是
+`width:100%`，它的宽由"这一列有多宽"决定，而这一列的宽由"页面是否纵向溢出"决定。首帧
+`render()` 读到 620 并据此定下 backing store；此后面板与棋谱把内容填满，页面高度越过视口，
+经典滚动条出现并从同一列拿走 15px——**这一步不由 `render()` 触发，也不改变窗口尺寸，所以
+`resize` 不会响**，620 的缓冲区就一直喂着 605 的盒。
+
+一次被实测推翻的假设，记录在此免得后人重走：先把锅算到"测量顺序"上，改成"写完 `style.height`
+再回读盒、只有读回的宽与算出的宽相等才落 backing store"（四轮上限）。在关掉 gutter 规则、只留
+这个回读的隔离跑里，`@boot` 仍然 `rows: 20 fail: 1`，回显 `{"css": [605,180], "backing": [620,180]}`
+——因为宽度的变化根本不发生在我们的那一次写之后。那段回读代码已删除。真正管用的是两个各能
+单独封住这条边的改动：
+
+* `js/view.js`：给 canvas 挂 `ResizeObserver`，盒宽与 `layout()` 上次用的宽不一致就重画。
+  单独生效的实测：关掉 gutter 规则、经典滚动条形态下 `canvas backing store: 605x180`、
+  `@boot rows: 20 fail: 0`、控制台无 `ResizeObserver loop` 告警（比较的是宽度而不是高度，
+  所以自己改高度不会把自己再触发一遍）。
+* `css/game.css`：`html { scrollbar-gutter: stable }`。探针实测同一只 `width:100%` 的盒在溢出
+  与不溢出两态都是 961px——宽度不再由高度决定，反馈边从源头拆掉；overlay 平台预留 0，
+  本机默认形态一个像素都没变。Safari 不认识这条，所以第一条不是冗余。
+
+两种滚动条形态下都跑过完整门禁（node 层 55 行 / 11,162 asserts 两种形态相同，全过）：
+
+| 滚动条形态 | `canvas backing store` 回显 | `@boot` | 浏览器层 |
+| --- | --- | --- | --- |
+| macOS overlay（`bash tools/verify.sh`） | 620x180 | rows: 20 fail: 0 | rows 126，0 fail，`=== ALL GREEN ===` |
+| 经典 15px（`CHROME_EXTRA_FLAGS=...`，runner 形态） | 605x180 | rows: 20 fail: 0 | rows 126，0 fail，`=== ALL GREEN ===` |
+
+`tools/verify.sh` 新增 `CHROME_EXTRA_FLAGS`（默认空，CI 的命令与行为不变）来跑第二行。
+下面这张资源表是修好**之前**那次发布（sha `0b96886`）的快照，push 之后按线上新 sha 重取。
 
 | 资源 | 结果 |
 | --- | --- |

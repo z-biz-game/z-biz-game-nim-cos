@@ -42,8 +42,12 @@ if curl -fsS -m 2 "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1; the
 fi
 
 UDD=$(mktemp -d)
+# CHROME_EXTRA_FLAGS is how a lane asks for another platform's behaviour while it is editing:
+# `--disable-features=OverlayScrollbar,OverlayScrollbars,FlushOverlayScrollbars` on a Mac gives
+# the classic 15px scrollbars the Linux runner has, which is where a layout that only fits the
+# pre-scrollback width shows up. Unset, this is the plain headless Chrome CI runs.
 "$CHROME" --headless=new --remote-debugging-port=$CDP_PORT --user-data-dir=$UDD \
-  --window-size=1000,820 --no-first-run --no-default-browser-check about:blank >/tmp/$TAG-chrome.log 2>&1 &
+  ${CHROME_EXTRA_FLAGS:-} --window-size=1000,820 --no-first-run --no-default-browser-check about:blank >/tmp/$TAG-chrome.log 2>&1 &
 CPID=$!
 node "$HERE/server.cjs" $WEB_PORT >/tmp/$TAG-server.log 2>&1 &
 SPID=$!
