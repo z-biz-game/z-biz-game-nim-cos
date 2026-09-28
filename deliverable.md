@@ -190,7 +190,9 @@ wrote 54 lots -> js/data/lots.js
 
 ## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
 
-发布 sha `0b96886`，CI trigger `2dcfe13`。
+发布 sha `a0ceec1`（CI run `36438764539`、Pages run `36438765029`，2026-09-28）。此前能查到的
+每一次 CI 都是 `failure`（`8acc87d` run 36314624183、`d237668` run 36421471950），红的都是同一条
+`@boot`；本节下面记它的定位与修复。
 
 **runner 上的浏览器 job 一直是红的，2026-09-28 定位并修好了。** 主代理 2026-09-27 10:49Z 用
 GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success | browser=failure`，
@@ -230,13 +232,19 @@ GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success
 `tools/verify.sh` 新增 `CHROME_EXTRA_FLAGS`（默认空，CI 的命令与行为不变）来跑第二行。
 下面这张资源表是修好**之前**那次发布（sha `0b96886`）的快照，push 之后按线上新 sha 重取。
 
-| 资源 | 结果 |
-| --- | --- |
-| `/`（index.html） | 200 / 3,499 B |
-| `js/main.js` | 200 / 17,184 B |
-| `css/game.css` | 200 / 4,852 B |
-| `js/data/lots.js` | 200 / 14,793 B |
-| `<title>` | `尼姆堆 · NIM`，与 README 首行一致 |
+| 资源 | 线上（2026-09-28 实抓，Pages 已含本次修复） | 本机同文件 |
+| --- | --- | --- |
+| `/`（index.html） | 200 / 3,499 B `aa7044764996` | 逐字节相同 |
+| `js/main.js` | 200 / 17,184 B `ab1a55917a09` | 逐字节相同 |
+| `css/game.css` | 200 / 5,156 B `fe093568d4ab` | 逐字节相同 |
+| `js/view.js` | 200 / 8,335 B `1c4ac05b306b` | 逐字节相同 |
+| `js/data/lots.js` | 200 / 14,793 B `d4ce0cd12231` | 逐字节相同 |
+| `<title>` | `尼姆堆 · NIM`，与 README 首行一致 | — |
+
+runner 侧同一 sha 的三个 job 自己打印出来的（不是本机数字搬过去）：unit job 五个套件
+`rows: 11/11/10/11/12`、`asserts: 84/6245/3076/1648/109`，全部 `fail: 0`；browser job 回显
+`canvas backing store: 605x180`、`@boot rows: 20 fail: 0`、六个场景 `rows: 20/32/24/15/9/26`
+全部 `fail: 0`、`browser total: rows 126`、`=== ALL GREEN ===`，job conclusion success。
 
 主代理门禁（本机 headless Chrome，DevTools :9353 / web :5193）：`npm run check` rc=0；
 node **55 / 0 fail**；浏览器 **126 / 0 fail** 且 `=== ALL GREEN ===`；zero-deps、0 个二进制资产、
