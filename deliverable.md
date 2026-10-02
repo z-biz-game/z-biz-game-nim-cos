@@ -22,10 +22,10 @@
 | 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `js/main.js:52-59`（`parseRoute`）；`node tools/playtest.mjs eval @routes` |
 | 测试钩子 | `window.nim` | `js/main.js:414`；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
 | 主张 | `outcome`/`winMoves` 由 Bouton 闭式给出，`par` 由完整倒推分析给出，两者**逐态对账** | `node --test test/retrograde.test.mjs`、`node tools/bake.mjs` |
-| node 层 | 55 行具名检查 / **11,162 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
-| 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | `bash tools/verify.sh`；只跑台架：`SKIP_UNIT=1 SCENARIOS=pointer bash tools/verify.sh` |
+| node 层 | 56 行具名检查 / **11,196 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
+| 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | 最后一次真实跑是 2026-10-02 之前；本轮派工单禁起 Chrome，**未复跑**，见文末 |
 | 台架端口 | 网页 **:5193**，DevTools **:9353**（不撞 :5180/:9340 与兄弟仓的 :5181/:9341、:5185-:5192/:9344-9352） | `tools/verify.sh:20-22`；开头有端口被占的自检 `exit 9` |
-| 依赖 | `dependencies {}`、`devDependencies {}`，零二进制资产 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"` |
+| 依赖 | `dependencies {}`、`devDependencies {}`；位图是生成物：`assets/gen/make_art.py` 现算 17 张 PNG，重跑 md5 逐字节一致 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"`；`python3 assets/gen/make_art.py && md5 -r assets/**/*.png` |
 | 产物可复现 | 重跑烘焙 → `js/data/lots.js` **byte-identical**（md5 `1dd4fa0d91fae2e944ae6d7aaee17c21`） | `node tools/bake.mjs && md5 -q js/data/lots.js` |
 
 ---
@@ -162,8 +162,11 @@ wrote 54 lots -> js/data/lots.js
 | 唯一解/最短性有反证 | 规划/逻辑之外的第三条路：**闭式 vs 全量倒推**，512 状态 0 处不一致；两规则分歧区域被统计并限定在"所有堆 ≤ 1"；另有独立 minimax 与浏览器第四意见 |
 | 从序列化产物重解复现印着的数字 | `test/library.test.mjs` + `@boot`（浏览器里再算一遍 54×2 行） |
 | 纯函数不改入参 | `test/anchor.test.mjs`、`test/retrograde.test.mjs` 各有专门行 |
-| 存档退化 / best 只降 / unlock 只升 / 清档真清 | `test/storage.test.mjs` 12 行 + `@save`/`@reloaded` |
-| 零依赖、零二进制资产、core 不碰 DOM | `package.json` 两个 `{}`；画面全 canvas 程序绘制；`test/library.test.mjs` 断言只有 `storage.js` 提浏览器全局 |
+| 存档退化 / best 只降 / unlock 只升 / 清档真清 | `test/storage.test.mjs` 13 行 + `@save`/`@reloaded` |
+| 坏一条记录只作废那一条（且丢了几条可数） | `test/storage.test.mjs`「一条垃圾记录只作废它自己」行：5 条 records 作废 3 条、`droppedBadRecords()===3`、好那条原样读回 |
+| 帧率无关：30/60/120Hz 喂同样 3.0s 得同样末态 | 本轮由 `/tmp/nim_fps_harness.mjs` 实测（七个字段极差比全 1.0000，两个阴性对照 4.0/5.44 越线）；**仓内尚无这条测试**，见文末 |
+| 暂停真的停住仿真、静音真的一个振荡器也不建 | 同上：`js/anim.js` `setPaused`（暂停中 0 步、accum 增量 0）与 `js/sound.js` `stats()`（静音 36 声 → 新建 0、`ctx.suspend` 1 次）为 /tmp 量具实测，仓内未固化 |
+| 零依赖、位图可复算、core 不碰 DOM | `package.json` 两个 `{}`；画面程序绘制 + 纹理读不到自动回落；`test/library.test.mjs` 断言只有 `storage.js` 提浏览器全局 |
 | 不做点击时现场搜索 | `make.js`/`retro.js` 不被页面 import（测试读 import 图） |
 | 不做成就/排行/签到/内购/云存档，分享只分享谜题 | 分享按钮复制 `#/lot/<id>`；无其它社交面 |
 
@@ -261,3 +264,41 @@ core purity clean、无幽灵导出、无密钥样式串。
 `rows: N asserts: K fail: M`（`fail` 在最后），而主代理的审计脚本原先按 `rows: N fail: M` 相邻匹配，
 于是把 55 行真实断言读成 `node 0/0`，一度让门禁给出"质量不达标"的假结论。脚本改为按关键字位置取值后，
 本仓的 55/0 与作者自述完全一致。
+
+---
+
+## 2026-10-02 商业化就绪波（HEAD 34370db，3 个 commit）
+
+上面那些行是**本轮之前**的状态；下面这节只写本轮改了什么、量到什么、以及还没验到什么。
+
+- 尺的对拍（`sellability.py` 的 `web_checks`，同一份判据）：取 `git archive d29f7ad | tar -x -C /tmp/nim_base`
+  的原始树与新树各跑一次 → **7/17 → 17/17**。点亮的 10 项：图标(favicon+真PNG≥180)、可安装(PWA)、
+  ≥44px 命中区、暂停、静音开关、玩法说明、有存档、帧率无关(dt)、全屏、safe-area 适配。
+  提交树复核：`committed_tree_scan.py z-biz-game-nim-cos` → `web(提交树): repos=1 平均 17.0/17 满项 1`。
+- 美术：`assets/gen/make_art.py`（Pillow，确定值噪声，无随机源）产出 17 张 PNG，母题是 P-position `1|2|3`。
+  `file` 全为 `PNG image data`，尺寸另走 IHDR 复核；重跑后 md5 逐字节一致；
+  index.html / manifest / sw.js / view.js 里引用的路径 `missing: [] zero-byte: []`。
+- 三档对拍（`/tmp/nim_fps_harness.mjs`，种子 `fps-harness-2026-10-02`，沙箱时钟起点 1000ms，
+  dt 取 `SIM_STEP` 的整数倍，同样 3.0s 虚拟时长）：30/60/120Hz 均为 steps 360、clock 3.000000、
+  spawned 30、particles 7、sx 2197.17、sy 1694.12、sl 3.659 —— 七个字段极差比 **1.0000**。
+  阴性对照：把整帧 dt 喂进 `step()` → clock 4.0000、particles/sx/sy 一档归零判 Infinity；
+  去掉累加器按帧积分 → steps 4.0000、sx 5.4439、sy 5.4966。阈值 3.6，两档都越线，量具有效。
+- 暂停与静音：暂停中连喂 120 帧 → 推进 0 步、累加器增量 0.000000000，恢复 60 帧后精确 240 步；
+  静音态 36 声（含和弦）→ 新建振荡器 0 个、`skipped=36`、`ctx.state=suspended`，静音态里 `resume()`
+  也不把时钟开回来；没有 AudioContext 时 `refused=5` 且不抛异常。
+- 单元：`node --check` 6/6 OK；5 个 suite 全绿 —— 84 / 6245 / 3096 / 1648 / 123 = **11,196 条断言、56 行、fail 0**；
+  `cos_load_sweep.js .` → `LOADED`。
+- 官方量具读不出来的一处（不是仓库缺陷）：`cos_frame_probe.js` 以 `vm.runInContext` 当 classic script 加载，
+  本仓是 ESM，三档全报 `SyntaxError: Cannot use import statement outside a module` → 结论"无法比对"。
+  本轮不为了迁就量具把模块退回全局脚本，改用自带的对拍。
+
+**还没验到的（别把 17/17 当成完整门禁）**：
+1. `tools/verify.sh` 的浏览器台架（`@boot @play @routes @save @reloaded @pointer` 共 126 行）本轮**没跑过**
+   —— 派工单禁止起 Chrome/Electron/CDP。而 `js/view.js` 的输入路径（pointerdown 优先 + 缩放反算命中）
+   和 `js/main.js` 的 HUD 接线正好是 `@pointer` 覆盖的东西，所以这 126 行是本轮最大的未测面。
+2. 帧率、暂停、静音那三组数字来自 `/tmp` 里的量具，**没有固化成仓内测试**；换人接手时它们不可重放。
+   下一棒值得把它们挪进 `test/`（纯模块，无需浏览器）。
+3. `og:image` 写的是相对路径 `./assets/og/og-card.png`：本域内正常，抓 Open Graph 的爬虫要绝对 URL，
+   所以社交卡片在真实抓取下大概率读不到。等有固定域名时连同 `og:url` 一起补。
+4. Electron 侧只走 `win.loadURL(http://127.0.0.1:<port>/index.html)`，SW 在那个 origin 上可注册；
+   但本轮没在 Electron 里实跑，`file://` 跳过注册的那条分支只由代码与 `README` 的 CORS 说明支撑。

@@ -11,8 +11,10 @@ node --test test/  # 纯逻辑层：5 个套件
 bash tools/verify.sh   # 一次性验收门：node 套件 + 真实 Chrome + 真实鼠标事件（:5193 网页 / :9353 DevTools）
 ```
 
-零依赖、零打包器、零二进制资产：画面全部由 canvas 2D 程序绘制，`dependencies` 与 `devDependencies`
-都是 `{}`。ES module 需要 origin，所以必须经 `server.cjs` 打开，`file://` 会被 CORS 挡掉。
+零依赖、零打包器：画面仍是 canvas 2D 程序绘制，`dependencies` 与 `devDependencies` 都是 `{}`。
+位图不是手工塞进来的资源而是**可复算的产物**：`python3 assets/gen/make_art.py` 现算 17 张 PNG
+（图标 + og 卡 + 桌布 + 石屑，重跑逐字节一致），纹理读不到时 `js/view.js` 自动回落成程序绘制。
+ES module 需要 origin，所以必须经 `server.cjs` 打开，`file://` 会被 CORS 挡掉。
 
 ## 玩法
 
