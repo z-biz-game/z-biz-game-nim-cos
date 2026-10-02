@@ -26,7 +26,12 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/
+          cp manifest.webmanifest sw.js _site/
           cp -r css js _site/
+          # 图标、社交卡、桌布与粒子贴图是运行时真去读的文件，必须进产物；
+          # assets/gen/ 是产出它们的脚本，跟着仓库走但不跟着站点走。
+          mkdir -p _site/assets
+          cp -r assets/icons assets/og assets/textures _site/assets/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

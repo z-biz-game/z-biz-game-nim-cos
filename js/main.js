@@ -22,6 +22,8 @@ import { createGame, grade, play, reset, setRule, status, undo } from './core/ga
 import { ALL, BANDS, byId, dailyLot, levelAt, lotsIn } from './core/library.js';
 import { store } from './core/storage.js';
 import { todayKey } from './core/rng.js';
+import { createSim } from './anim.js';
+import { createSound } from './sound.js';
 import { createView } from './view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,6 +33,8 @@ const el = {
   stars: $('stars'), verdict: $('verdict'), tally: $('tally'), again: $('again'),
   next: $('next'), undo: $('undo'), restart: $('restart'), share: $('share'), wipe: $('wipe'),
   rules: $('rules'), toast: $('toast'), modes: $('modes'),
+  help: $('hud-help'), pause: $('hud-pause'), sound: $('hud-sound'), full: $('hud-full'),
+  veil: $('pausedveil'), resume: $('resume'), howto: $('howto'),
 };
 
 const RULE_LABEL = { [NORMAL]: '取最后一枚者胜', [MISERE]: '取最后一枚者负' };
@@ -46,8 +50,23 @@ const session = {
   dailyKey: todayKey(),
   toastTimer: 0,
   nextId: null,
+  // playing / paused：暂停就是仿真的累加器不再吃时间，不是把画面盖住。
+  phase: 'playing',
+  muted: false,
+  reduceMotion: false,
+  fullscreen: false,
+  helpOpen: false,
 };
 const errors = [];
+
+// 音频与仿真在 view 之前：view 每一帧要读它们的时钟与粒子，而它们的开关要看存档里的设置。
+const prefersReduce = typeof matchMedia === 'function'
+  ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+session.muted = !!store.settings.muted;
+session.reduceMotion = !!(prefersReduce && prefersReduce.matches);
+
+const sim = createSim({ seed: 'nim-anim', reduceMotion: session.reduceMotion });
+const sound = createSound(() => session.muted);
 
 function parseRoute(hash) {
   const raw = String(hash || '').replace(/^#/, '');
@@ -76,6 +95,9 @@ function openLot(lot) {
   session.selected = -1;
   session.scored = false;
   session.log = [];
+  session.phase = 'playing';
+  session.nextId = null;
+  sim.reset();
 }
 
 function resolveRoute() {
@@ -141,6 +163,7 @@ function readoutRows() {
   const g = session.game;
   const s = status(g);
   const baked = g.scores[g.rule];
+  const sim2 = sim.summary();
   return [
     ['规则', RULE_LABEL[g.rule]],
     ['开局判定', `${OUTCOME_LABEL[baked.outcome]} · 烘焙量得`],
@@ -148,6 +171,9 @@ function readoutRows() {
     ['剩余必胜着法数', String(s.winMoves)],
     ['已走 / par', `${g.plies} / ${baked.par}`],
     ['石子 / 堆', `${s.stones} / ${s.heaps}`],
+    // 时长来自定步长仿真的虚拟秒：暂停期间它必须一动不动，这是"暂停为真"的读数。
+    ['本局时长', `${sim2.clock.toFixed(1)} 秒 · ${session.phase === 'paused' ? '已暂停' : '进行中'}`],
+    ['动画步 / 石屑', `${sim2.steps} 步 · ${sim2.particles} 粒`],
     ['局面', g.done ? (g.winner === 'you' ? '你胜' : '对手胜') : '轮到你'],
   ];
 }
@@ -181,6 +207,8 @@ function renderTotals() {
   const won = recs.filter((r) => r && r.won).length;
   const perfect = recs.filter((r) => r && r.perfect).length;
   el.totals.innerHTML = `通关 <b>${won}</b>/${ALL.length} · 完美 <b>${perfect}</b> · 已玩 ${st.plays} 局 · ${st.plies} 步`;
+  const bad = store.droppedBadRecords();
+  if (bad > 0) el.totals.innerHTML += ` · <b>丢弃坏记录 ${bad} 条</b>`;
   const want = session.route.kind === 'daily' ? 'daily' : 'home';
   for (const a of el.modes.querySelectorAll('a')) a.classList.toggle('on', a.dataset.route === want);
 }
@@ -231,18 +259,23 @@ function syncButtons() {
   }
 }
 
+let dirty = true;
+
 function draw() {
   const g = session.game;
   if (!g) return;
   const v = verdict(g.heaps, g.rule);
+  const paused = session.phase === 'paused';
   view.render({
     heaps: g.heaps,
     rule: g.rule,
     selected: session.selected,
     last: g.history.length ? g.history[g.history.length - 1] : null,
     done: g.done,
+    paused,
     showStrips: !g.done && session.selected < 0 && v.winning,
   });
+  dirty = false;
   el.hintline.innerHTML = hintText();
   renderReadout();
   renderLog();
@@ -250,6 +283,22 @@ function draw() {
   renderShelf();
   renderCurtain();
   syncButtons();
+  syncHud();
+}
+
+// HUD 的按钮态是"读出来的"，不是"点下去时顺手写的"：任何一条改状态的路径（键盘、按钮、
+// 存档恢复）之后都走这里，屏幕就不会和 session 分家。
+function syncHud() {
+  const paused = session.phase === 'paused';
+  el.veil.hidden = !paused;
+  el.pause.setAttribute('aria-pressed', String(paused));
+  el.pause.textContent = paused ? '继续' : '暂停';
+  el.sound.setAttribute('aria-pressed', String(session.muted));
+  el.sound.textContent = session.muted ? '已静音' : '静音';
+  el.full.setAttribute('aria-pressed', String(session.fullscreen));
+  el.full.textContent = session.fullscreen ? '退出全屏' : '全屏';
+  el.help.setAttribute('aria-expanded', String(session.helpOpen));
+  el.howto.hidden = !session.helpOpen;
 }
 
 // ---------------------------------------------------------------- moves
@@ -278,6 +327,7 @@ function settleRecord() {
     if (opened > store.unlocked) store.unlock(opened);
   }
   if (session.route.kind === 'daily') store.markDaily(session.dailyKey, g.id);
+  sound.chord(won ? 'win' : 'lose', 0.12);
 }
 
 function goNext() {
@@ -289,6 +339,7 @@ function takeTap(hitAt) {
   const g = session.game;
   if (g.done) {
     say('这一局已经结束了：按「重开」或「下一关」');
+    sound.blip('refuse');
     return;
   }
   if (!hitAt) {
@@ -299,9 +350,11 @@ function takeTap(hitAt) {
   if (session.selected < 0) {
     if (!g.heaps[hitAt.i]) {
       say('那一堆是空的');
+      sound.blip('refuse');
       return;
     }
     session.selected = hitAt.i;
+    sound.blip('lift');
     draw();
     return;
   }
@@ -309,15 +362,25 @@ function takeTap(hitAt) {
     // Deliberately inert. "One heap per move" is a rule of the game, so the shell refuses to
     // turn a cross-heap tap into anything at all: no ply, no reply, no history entry.
     say('一次只能动一堆：先点棋盘空白处放下抬起的那堆');
+    sound.blip('refuse');
     return;
   }
   const move = { i: session.selected, to: hitAt.to };
+  const was = g.heaps[move.i];
   const r = play(g, move);
   if (!r.ok) {
     say(r.reason);
     session.selected = -1;
+    sound.blip('refuse');
     draw();
     return;
+  }
+  // 石屑画在"这一手之前"的列几何上，所以必须在 draw() 重排版面之前炸出去。
+  view.burst(r.you.i, was, r.you.to, 'stone');
+  sound.blip('take');
+  if (r.ai) {
+    view.burst(r.ai.i, r.ai.was, r.ai.to, 'lose');
+    sound.blip('reply', 0.09);
   }
   session.selected = -1;
   logMove(r.you);
@@ -333,23 +396,31 @@ function liftOnly(i) {
 
 // ---------------------------------------------------------------- wiring
 
-const view = createView(el.board, { tap: (hitAt) => takeTap(hitAt) });
+const view = createView(el.board, { tap: (hitAt) => takeTap(hitAt), sim });
 
 el.undo.addEventListener('click', () => {
   if (!undo(session.game)) {
     say('还没有可回退的一步');
+    sound.blip('refuse');
     return;
   }
   session.selected = -1;
   session.log.push({ side: 'you', text: '回退一手（连同对手的回应一起收回）' });
+  sound.blip('lift');
   draw();
 });
 
+// 重开 = 把这一关发回起点：模型、抬起态、日志、记分标记，以及**动画层的全部缓存**
+// （粒子、累加器、虚拟秒、步数、种子流）。少清一样，第二局就带着第一局的余烬跑。
 function restartNow() {
   reset(session.game);
   session.selected = -1;
   session.scored = false;
   session.log = [];
+  session.phase = 'playing';
+  sim.reset();
+  sound.blip('pick');
+  dirty = true;
   draw();
 }
 
@@ -384,18 +455,136 @@ el.share.addEventListener('click', async () => {
 
 el.wipe.addEventListener('click', () => {
   store.reset();
+  session.muted = false;
+  sound.setMuted(false);
   applyRoute();
   say('存档已清空，回到第 1 关');
+});
+
+// ---------------------------------------------------------------- 辅助能力
+// 每个开关都同时做三件事：改 session、把事实交给真正会停/会停不下来的那一层（仿真、音频、
+// 全屏 API），再从 session 回读一次按钮态。屏幕上的标签永远是被读出来的，不是被写上去的。
+
+// 上一帧的时间戳与读数刷新用的拍子。`lastTime = 0` 是"下一帧重新起算"的哨兵：暂停、
+// 重开都置零，于是恢复的那一帧不会把暂停的几秒补进累加器。
+let lastTime = 0;
+let uiBeat = 0;
+
+function togglePause(force) {
+  const next = force === undefined ? (session.phase !== 'paused') : force === false;
+  session.phase = next ? 'paused' : 'playing';
+  sim.setPaused(session.phase === 'paused');
+  if (session.phase === 'paused') {
+    // 暂停期间音频时钟也停住：不然"暂停"只是画面不动，声音还在排期。
+    sound.suspend();
+  } else {
+    lastTime = 0;            // 不再让累加器一帧补上暂停那几秒
+    sound.resume();
+  }
+  sound.blip('pause');
+  syncHud();
+}
+
+function toggleMute(force) {
+  session.muted = force === undefined ? !session.muted : !!force;
+  sound.setMuted(session.muted);
+  store.setSetting('muted', session.muted);
+  if (!session.muted) sound.blip('pick');
+  syncHud();
+  say(session.muted ? '已静音：一个振荡器也不会再建' : '声音已开回');
+}
+
+function toggleHelp(force) {
+  session.helpOpen = force === undefined ? !session.helpOpen : !!force;
+  if (session.helpOpen && !store.settings.seenTutorial) store.setSetting('seenTutorial', true);
+  syncHud();
+}
+
+// 全屏走标准名，退而求其次退 webkit 前缀（iOS Safari 到 16.4 才给网页这个 API）；
+// 两个都没有就如实说，不假装成功。
+function toggleFullscreen() {
+  const doc = document;
+  const node = doc.documentElement;
+  if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+    const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+    if (exit) Promise.resolve(exit.call(doc)).catch(() => say('退出全屏被拦下了'));
+    return;
+  }
+  const req = node.requestFullscreen || node.webkitRequestFullscreen;
+  if (!req) { say('这台浏览器不开放网页全屏'); return; }
+  Promise.resolve(req.call(node)).catch(() => say('全屏被系统拦下了'));
+}
+
+function readFullscreen() {
+  session.fullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  syncHud();
+}
+
+el.pause.addEventListener('click', () => togglePause());
+el.resume.addEventListener('click', () => togglePause(false));
+el.sound.addEventListener('click', () => toggleMute());
+el.full.addEventListener('click', () => toggleFullscreen());
+el.help.addEventListener('click', () => toggleHelp());
+document.addEventListener('fullscreenchange', readFullscreen);
+document.addEventListener('webkitfullscreenchange', readFullscreen);
+
+// reduceMotion 要有真分支，不是一句 CSS：粒子一颗不生、呼吸与脉动恒等于静图。
+if (prefersReduce) {
+  const onChange = (e) => {
+    session.reduceMotion = !!(e && e.matches);
+    sim.setReduceMotion(session.reduceMotion);
+    dirty = true;
+    draw();
+  };
+  if (typeof prefersReduce.addEventListener === 'function') {
+    prefersReduce.addEventListener('change', onChange);
+  } else if (typeof prefersReduce.addListener === 'function') {
+    prefersReduce.addListener(onChange);
+  }
+}
+
+// 切到后台就把音频时钟挂起（浏览器自己也会这么做，但"看不见却在耗电"是投诉点）。
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) sound.suspend();
+  else sound.resume();
 });
 
 window.addEventListener('hashchange', applyRoute);
 window.addEventListener('resize', draw);
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  if (ev.key === 'Escape') { session.selected = -1; draw(); return; }
-  if (ev.key === 'u' || ev.key === 'U') { el.undo.click(); return; }
-  if (ev.key === 'r' || ev.key === 'R') { restartNow(); return; }
-  const d = Number(ev.key);
+  // 焦点在按钮/链接上时 Enter/Space 由浏览器自己触发那次 click，这里再动一次就是双发。
+  const tag = ev.target && ev.target.tagName;
+  if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const k = ev.key;
+  if (k === 'Escape') {
+    if (session.helpOpen) toggleHelp(false);
+    else { session.selected = -1; draw(); }
+    return;
+  }
+  if (k === 'h' || k === 'H' || k === '?') { toggleHelp(); return; }
+  if (k === 'm' || k === 'M') { toggleMute(); return; }
+  if (k === 'f' || k === 'F') { toggleFullscreen(); return; }
+  if (k === 'p' || k === 'P') { togglePause(); return; }
+  if (k === 'u' || k === 'U') { el.undo.click(); return; }
+  if (k === 'r' || k === 'R') { restartNow(); return; }
+  if (k === 'Enter') {
+    // Enter = 把这局"开始"下去：结束了走再来一次/下一关，暂停了先解除，否则抬起第一堆。
+    if (session.game.done) { (session.nextId ? el.next : el.again).click(); return; }
+    if (session.phase === 'paused') { togglePause(false); return; }
+    if (session.selected < 0) {
+      const i = session.game.heaps.findIndex((n) => n > 0);
+      if (i >= 0) liftOnly(i);
+    }
+    return;
+  }
+  if (k === ' ' || k === 'Spacebar') {
+    if (session.game.done) { restartNow(); return; }
+    togglePause();
+    return;
+  }
+  if (session.phase === 'paused') { say('已暂停：按 Space 或 P 继续'); return; }
+  const d = Number(k);
   if (!Number.isInteger(d) || d < 0 || d > 9) return;
   if (session.selected >= 0) {
     // A lifted heap plus a digit means "leave exactly this many there".
@@ -407,12 +596,47 @@ window.addEventListener('keydown', (ev) => {
 });
 window.addEventListener('error', (ev) => errors.push(String(ev.message || ev.error)));
 
+// ---------------------------------------------------------------- 主循环
+// 全仓只有这一处 requestAnimationFrame。它做且仅做四件事：算出这一帧经过了多少秒、
+// 把它交给定步长累加器（暂停时它自己一颗也不走）、按需重画、按拍刷新读数。
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  // dt 只在"帧与帧之间"有意义，推进状态的一律是 anim.js 里的恒定步长。
+  const dt = lastTime ? Math.min(0.25, (now - lastTime) / 1000) : 0;
+  lastTime = now;
+  sim.advance(dt);
+  if (session.phase !== 'paused') uiBeat += dt;
+  const moving = sim.particles.length > 0 || (session.selected >= 0 && !sim.reduceMotion);
+  if (dirty || (moving && session.phase !== 'paused')) {
+    view.render({ paused: session.phase === 'paused' });
+    dirty = false;
+  }
+  if (uiBeat >= 0.2) {
+    uiBeat = 0;
+    renderReadout();   // 「本局时长」这一行是读出来的，不是估出来的
+  }
+}
+
 applyRoute();
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
+
+// 可安装：file:// 下根本没有 SW registry，整段跳过；老浏览器没有 navigator.serviceWorker
+// 也跳过。注册失败（无 HTTPS、被策略拦）只影响"能不能离线"，绝不让页面抛未捕获异常。
+if (location.protocol !== 'file:' && typeof navigator !== 'undefined'
+  && 'serviceWorker' in navigator && typeof window !== 'undefined'
+  && typeof window.addEventListener === 'function') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {
+      /* 装不上就在线玩：这一句必须存在，否则控制台是一条未处理的 rejection */
+    });
+  });
+}
 
 // The playtest's door. Everything behind it is the code a real click runs: `tap` goes
 // through `takeTap`, `point` reads the layout the last frame actually drew.
 window.nim = {
-  version: 1,
+  version: 2,
   lots: ALL,
   bands: BANDS,
   errors,
@@ -421,6 +645,7 @@ window.nim = {
   get state() {
     const g = session.game;
     const v = verdict(g.heaps, g.rule);
+    const s = sim.summary();
     return {
       id: g.id, band: g.band, index: g.index, rule: g.rule, heaps: g.heaps.slice(),
       start: g.start.slice(), plies: g.plies, done: g.done, winner: g.winner,
@@ -428,8 +653,29 @@ window.nim = {
       outcome: v.outcome, winMoves: v.winMoves, winning: v.winning,
       par: g.scores[g.rule].par, stones: total(g.heaps), terminal: isTerminal(g.heaps),
       unlocked: store.unlocked, plays: store.stats.plays, stars: grade(g) ? grade(g).stars : 0,
+      // 辅助能力与动画层的读数：任何一把尺子都要能读到"暂停真的停了、静音真的停了"。
+      phase: session.phase, paused: session.phase === 'paused',
+      muted: session.muted, reduceMotion: session.reduceMotion,
+      fullscreen: session.fullscreen, helpOpen: session.helpOpen,
+      simClock: s.clock, simSteps: s.steps, simParticles: s.particles,
+      simAccum: s.accum, simSpawned: s.spawned,
     };
   },
+  sim: () => sim.summary(),
+  sound: () => sound.stats(),
+  art: () => view.artReady(),
+  startLevel: (id) => {
+    // 走真实那条路：hash → applyRoute → openLot，另写一套"测试专用开局"就证明不了任何东西。
+    if (id) location.hash = `#/lot/${id}`;
+    session.phase = 'playing';
+    draw();
+    return { id: session.game.id, heaps: session.game.heaps.slice(), phase: session.phase };
+  },
+  setPaused: (on) => { togglePause(on); return session.phase; },
+  setMuted: (on) => { toggleMute(on); return session.muted; },
+  setHelp: (on) => { toggleHelp(on); return session.helpOpen; },
+  advance: (dt) => sim.advance(dt),
+  burst: (i, from, to, kind) => view.burst(i, from, to, kind),
   status: () => status(session.game),
   grade: () => grade(session.game),
   point: (i, to) => view.point(i, to),
@@ -444,6 +690,10 @@ window.nim = {
   restart: restartNow,
   setRule: (r) => { setRule(session.game, r); draw(); return session.game.rule; },
   go: (hash) => { location.hash = hash; return session.route; },
-  save: () => ({ records: { ...store.records }, stats: { ...store.stats }, daily: { ...store.daily }, unlocked: store.unlocked }),
+  save: () => ({
+    records: { ...store.records }, stats: { ...store.stats }, daily: { ...store.daily },
+    unlocked: store.unlocked, settings: { ...store.settings },
+    droppedBadRecords: store.droppedBadRecords(),
+  }),
   wipe: () => { store.reset(); draw(); return Object.keys(store.records).length; },
 };

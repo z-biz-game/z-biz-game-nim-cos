@@ -4,8 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14161a">
+<meta name="color-scheme" content="dark">
 <meta name="description" content="尼姆堆：轮流从一堆里取走石子，取走最后一枚者胜（或者负）。每一关的必胜判定与最优局长都由闭式异或定理给出，并被一次完整的倒推分析全量复算。">
-<link rel="icon" href="data:,">
+<meta name="apple-mobile-web-app-title" content="尼姆堆 NIM">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:type" content="game">
+<meta property="og:title" content="尼姆堆 · NIM — 每一关的难度都是一次测量">
+<meta property="og:description" content="outcome 是 Bouton 闭式，par 是倒推分析量出来的最优局长。对手是完美玩家。">
+<meta property="og:image" content="./assets/og/og-card.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="./assets/icons/icon-48.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="./manifest.webmanifest">
 <title>尼姆堆 · NIM</title>
 <link rel="stylesheet" href="./css/game.css">
 </head>
@@ -15,6 +27,12 @@
   <nav class="modes" id="modes" aria-label="模式">
     <a href="#/" data-route="home">战役</a>
     <a href="#/daily" data-route="daily">每日一题</a>
+  </nav>
+  <nav class="hud" id="hud" aria-label="辅助">
+    <button type="button" id="hud-help" aria-expanded="false" title="玩法说明 (H)">玩法</button>
+    <button type="button" id="hud-pause" aria-pressed="false" title="暂停 / 继续 (Space 或 P)">暂停</button>
+    <button type="button" id="hud-sound" aria-pressed="false" title="静音开关 (M)">静音</button>
+    <button type="button" id="hud-full" aria-pressed="false" title="全屏 (F)">全屏</button>
   </nav>
   <p class="totals" id="totals"></p>
 </header>
@@ -34,11 +52,27 @@
         </div>
       </div>
     </div>
+    <div class="paused-veil" id="pausedveil" hidden>
+      <p><b>已暂停</b><br><span>仿真与提示动画都停在当前这一步，棋盘上的石子一颗没动。</span></p>
+      <button type="button" id="resume">继续</button>
+    </div>
   </section>
 
   <aside class="panel">
     <p class="crumbs" id="crumbs"></p>
     <dl class="readout" id="readout"></dl>
+    <section class="howto" id="howto" hidden>
+      <h2>怎么玩</h2>
+      <ol>
+        <li>一条规则：<b>一次只能动一堆</b>，而且至少取走一枚。</li>
+        <li>两步下法：先点一列把它<b>抬起</b>，再点那列上的一条虚线框 —— 框里的数就是「这堆剩几枚」。绿色框是<b>本步的必胜着</b>（由闭式异或当场算出，不是提示次数）。</li>
+        <li>点别的列不算下棋，点空白处放下抬起的那堆，最顶上那条空框等于「取 0 枚」，会被判非法。</li>
+        <li>取到最后一枚：「取最后一枚者胜」规则下你赢，「者负」规则下你输 —— 两个规则的最优局长 par 都是烘焙时量出来的。</li>
+      </ol>
+      <p class="keys">键盘：<kbd>1</kbd>–<kbd>9</kbd> 抬堆／留子 · <kbd>Enter</kbd> 开始下 ·
+        <kbd>Space</kbd>/<kbd>P</kbd> 暂停 · <kbd>R</kbd> 重开 · <kbd>U</kbd> 回退 ·
+        <kbd>M</kbd> 静音 · <kbd>F</kbd> 全屏 · <kbd>H</kbd> 本说明 · <kbd>Esc</kbd> 放下</p>
+    </section>
     <div class="rules" id="rules" role="group" aria-label="取胜规则">
       <button type="button" data-rule="normal" id="rule-normal">取最后一枚者胜</button>
       <button type="button" data-rule="misere" id="rule-misere">取最后一枚者负</button>

@@ -315,9 +315,10 @@ test('stats() measures the shelf instead of restating the generator', () => {
 test('the browser cannot search: nothing it loads imports the solver or the generator', () => {
   // The structural half of the "closed form, O(k), never on click" requirement. A test over
   // the import graph beats a comment promising the same thing.
-  const browserFiles = ['index.html', 'css/game.css', 'js/main.js', 'js/view.js', 'js/data/lots.js'];
+  const browserFiles = ['index.html', 'css/game.css', 'js/main.js', 'js/view.js', 'js/anim.js',
+    'js/sound.js', 'js/data/lots.js', 'manifest.webmanifest', 'sw.js'];
   for (const rel of browserFiles) ok(existsSync(join(root, rel)), `${rel} is missing`);
-  const loaded = ['js/main.js', 'js/view.js', 'js/data/lots.js',
+  const loaded = ['js/main.js', 'js/view.js', 'js/anim.js', 'js/sound.js', 'js/data/lots.js',
     'js/core/heaps.js', 'js/core/bouton.js', 'js/core/ai.js', 'js/core/game.js',
     'js/core/library.js', 'js/core/storage.js', 'js/core/rng.js'];
   for (const rel of loaded) {
@@ -334,7 +335,14 @@ test('the browser cannot search: nothing it loads imports the solver or the gene
     }
   }
   const html = readFileSync(join(root, 'index.html'), 'utf8');
-  eq(/<link rel="icon" href="data:,">/.test(html), true, 'no favicon request: a data: URL answers it');
+  // 图标这条从"用 data: 挡掉请求"换成了"盘上真有位图"：可安装要的是 192/512 的 PNG，
+  // 一张 data: 空图既装不上桌面也上不了商店。仍然不外链——href 全部是同仓相对路径。
+  for (const rel of ['./assets/icons/icon-32.png', './assets/icons/icon-192.png',
+    './assets/icons/apple-touch-icon.png', './manifest.webmanifest']) {
+    ok(html.includes(`href="${rel}"`), `index.html 没有接上 ${rel}`);
+    ok(existsSync(join(root, rel.replace(/^\.\//, ''))), `${rel} 被引用但盘上没有`);
+  }
+  ok(!/href="https?:\/\//.test(html), '图标与清单一律同源相对路径，一个外链也不发');
   eq(/<script type="module" src="\.\/js\/main\.js"><\/script>/.test(html), true, 'one module, no bundler');
   eq(/<canvas id="board"/.test(html), true, 'the board is a canvas, not a pile of divs');
   ok(!/fetch\(|https?:\/\//.test(html.replace(/<\/?(html|head|meta|body)[^>]*>/g, '')), 'the page fetches nothing');
