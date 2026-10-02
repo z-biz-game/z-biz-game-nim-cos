@@ -42,6 +42,19 @@ const lsHalf = makeLS(JSON.stringify({
   records: { 'knife-01': { won: true } }, unlocked: '0', stats: null, daily: 'no',
 }));
 const lsHostile = makeLS(JSON.stringify(['x', 'y']));
+const lsRotten = makeLS(JSON.stringify({
+  records: {
+    'spark-01': { plays: 3, won: true, best: 8, perfect: true, lastWon: true, lastPlies: 8, par: 8 },
+    'spark-02': null,
+    'spark-03': { plays: 'many', won: true, best: 4 },
+    'spark-04': { plays: 2, won: 'yes', best: 4 },
+    'spark-05': { plays: 1, won: false, lastPlies: 12 },
+  },
+  unlocked: 6,
+  daily: { '2026-09-29': { id: 'knife-01', at: 5 }, 'not-a-day': 'no id here' },
+  settings: { muted: 'true', seenTutorial: true, smuggled: 'drop me' },
+  stats: { plays: 6, wins: 3, losses: 3, plies: 90 },
+}));
 const lsNeverGiven = makeLS();
 let blockedAsks = 0;
 
@@ -53,7 +66,7 @@ function useShim(kind) {
     };
     return;
   }
-  const ls = { disk: lsDisk, junk: lsJunk, half: lsHalf, hostile: lsHostile }[kind];
+  const ls = { disk: lsDisk, junk: lsJunk, half: lsHalf, hostile: lsHostile, rotten: lsRotten }[kind];
   globalThis.window = { localStorage: ls };
 }
 
@@ -72,6 +85,7 @@ const blocked = await again();
 const junked = await again();
 const hostile = await again();
 const halved = await again();
+const rotted = await again();
 
 test('with no window at all the store still plays the game, in memory', () => {
   useShim('none');
@@ -99,7 +113,7 @@ test('a working localStorage is written through and read back by a fresh page', 
   eq(lsDisk.data.size, 1, 'the save lives in exactly one key, no scratch data beside it');
   ok(lsDisk.sets >= 3, `${lsDisk.sets} writes went through to disk`);
   const parsed = JSON.parse(raw);
-  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked'], 'the versioned shape');
+  eq(Object.keys(parsed).sort(), ['daily', 'records', 'settings', 'stats', 'unlocked'], 'the versioned shape');
   eq(parsed.records['nerve-03'].best, 12);
   eq(parsed.unlocked, 7);
   eq(parsed.stats, { plays: 1, wins: 1, losses: 0, plies: 12 });
@@ -161,6 +175,29 @@ test('a hostile save shape is refused the same way, and then rewritten cleanly',
   const after = JSON.parse(lsHostile.data.get(KEY));
   eq(Array.isArray(after), false, 'the replacement payload is an object');
   eq(after.records['oddball-01'].best, 2, 'and it is the shape the shell expects');
+});
+
+test('一条垃圾记录只作废它自己，丢掉几条是可数的', () => {
+  useShim('rotten');
+  eq(Object.keys(rotted.records).sort(), ['spark-01', 'spark-05'],
+    'null 一条、plays 是文字一条、won 是文字一条 —— 只有这三条作废');
+  eq(rotted.droppedBadRecords(), 3, '面板要能印出"这次丢了几条"');
+  eq(rotted.record('spark-01'), { plays: 3, won: true, best: 8, perfect: true, lastWon: true, lastPlies: 8, par: 8 },
+    '被读出来的好记录一个字节也没被动');
+  eq(rotted.record('spark-05'), { plays: 1, won: false, lastPlies: 12 }, '没赢过的那条也原样留着，不补一个 best');
+  eq(rotted.unlocked, 6, '一条坏记录不该把战役进度也带走');
+  eq(rotted.stats, { plays: 6, wins: 3, losses: 3, plies: 90 }, '总账同样照读');
+  eq(Object.keys(rotted.daily), ['2026-09-29'], 'daily 里 id 不是字符串的那格被丢掉');
+  eq(rotted.settings, { muted: false, seenTutorial: true }, '"true" 不是布尔，白名单外的键进不来');
+  // 被丢掉的那一条可以从零再挣一次，而不是永远读成 NaN
+  const back = rotted.finish('spark-03', { won: true, plies: 5, par: 6 });
+  eq(back, { plays: 1, won: true, best: 5, perfect: true, lastWon: true, lastPlies: 5, par: 6 });
+  eq(rotted.droppedBadRecords(), 3, '重挣不会把"丢过 3 条"这件事抹掉');
+  eq(rotted.setSetting('muted', true), true, '设置写进去就读得回来');
+  const onDisk = JSON.parse(lsRotten.data.get(KEY));
+  eq(onDisk.settings, { muted: true, seenTutorial: true }, '落盘的设置里没有夹带键');
+  eq(onDisk.records['spark-03'].best, 5, '重挣的那条也真的落了盘');
+  eq(Object.keys(onDisk.records).sort(), ['spark-01', 'spark-03', 'spark-05'], '垃圾条被替换掉，而不是叠在底下');
 });
 
 test('a half-valid save falls back field by field, not all or nothing', () => {
