@@ -99,7 +99,7 @@ test('a working localStorage is written through and read back by a fresh page', 
   eq(lsDisk.data.size, 1, 'the save lives in exactly one key, no scratch data beside it');
   ok(lsDisk.sets >= 3, `${lsDisk.sets} writes went through to disk`);
   const parsed = JSON.parse(raw);
-  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked'], 'the versioned shape');
+  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked', 'v'], 'the versioned shape');
   eq(parsed.records['nerve-03'].best, 12);
   eq(parsed.unlocked, 7);
   eq(parsed.stats, { plays: 1, wins: 1, losses: 0, plies: 12 });
@@ -169,7 +169,8 @@ test('a half-valid save falls back field by field, not all or nothing', () => {
   eq(halved.unlocked, 1, '"0" is not an unlock count');
   eq(halved.stats, { plays: 0, wins: 0, losses: 0, plies: 0 }, 'stats: null became the blank shape');
   eq(halved.daily, {}, 'daily: "no" became an empty log');
-  eq(halved.record('knife-01'), { won: true }, 'a record round-trips as written');
+  eq(halved.record('knife-01'), { plays: 0, won: true, lastWon: false, lastPlies: 0, best: null, perfect: false, par: null },
+    'a half-written record is normalised field by field to the blank shape, not passed through');
   const fixed = halved.finish('knife-01', { won: true, plies: 13, par: 11 });
   eq(fixed.plays, 1, 'a record with no plays field restarts at 1 instead of going NaN');
   eq(fixed.won, true, 'and the half-truth that was in the file is still honoured');
