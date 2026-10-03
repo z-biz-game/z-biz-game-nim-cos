@@ -56,6 +56,27 @@
     </div>
     <ol class="log" id="log"></ol>
     <div class="shelf" id="shelf"></div>
+    <!--
+      玩法说明。下面每一条都对着引擎代码写，不是照抄宣传语：
+      局面与走子模型出自 js/core/heaps.js 文件头（position / move 两行定义 + 那句
+      "One move touches exactly one heap... That is the entire rule book"），
+      两种胜负约定出自同文件 NORMAL / MISERE 的导出，胜负判定出自 js/core/game.js:45，
+      交互规则（跨堆点击不算棋、取 0 枚不算棋）出自 js/main.js:136-137 的那句提示语。
+      改引擎规则时这个块要跟着改——它不是另一套规则，是同一套规则的人话。
+    -->
+    <details class="about">
+      <summary>玩法：每步只能动一堆</summary>
+      <p><b>目标</b>：把最后那枚棋子按本关选定的规则拿走或留给自己。对手不是「很强」而是<b>完美玩家</b>——它每步直接取闭式给出的第一个必胜着，没有让它变笨的开关。所以局面一旦交回 P 位（全体堆大小异或为 0），这局就已经不属于你了。</p>
+      <p><b>规则只有一条</b>：每一步<b>只能动一堆</b>，必须<b>至少拿走一枚</b>，而且<b>不许跨堆拿</b>。<code>js/core/heaps.js</code> 的文件头自己就是这么写的：「That is the entire rule book」。本仓其余代码要么是关于这个数组的定理（<code>bouton.js</code>），要么是对它的搜索（<code>retro.js</code>），要么只是像素。</p>
+      <p><b>两种胜负约定</b>，开局前在上方切换，同一套引擎用 <code>rule</code> 字段区分，不是两套引擎（<code>NORMAL</code> / <code>MISERE</code>，<code>js/core/heaps.js</code>）：</p>
+      <ul>
+        <li><b>取最后一枚者胜</b>（normal）——拿走最后一枚的人赢。</li>
+        <li><b>取最后一枚者负</b>（misere）——拿走最后一枚的人输，<b>要把最后一枚留给对手</b>。</li>
+      </ul>
+      <p>胜负由 <code>js/core/game.js:45</code> 判：<code>winner = rule === NORMAL ? mover : other(mover)</code>，也就是「取最后一枚」在 misere 下会把胜者判给对手。</p>
+      <p><b>怎么操作</b>：先点一堆选中它，再点一条<b>虚线框</b>，把这堆剩成框上的那个数。<b>跨堆点击不算棋，取 0 枚也不算</b>。键盘：<kbd>Esc</kbd> 取消选中，<kbd>U</kbd> 回退一手，<kbd>R</kbd> 重开，直接敲数字键选数。</p>
+      <p>屏幕上每个数字都是量出来的：<code>outcome</code> 是 Bouton 的闭式判定（异或为 0 即后手必胜），<code>par</code> 是双方各按最优取向时的总步数，<code>winMoves</code> 是本步的必胜着法数。</p>
+    </details>
     <details class="about">
       <summary>这一关的数字从哪来</summary>
       <p>屏幕上每个数字都是量出来的：<code>outcome</code> 是 Bouton 的闭式判定（全体堆大小异或为 0 即后手必胜），<code>par</code> 是「赢的一方尽量走短、输的一方尽量拖长」时这局棋的总步数，<code>winMoves</code> 是本步的必胜着法数。三者都由 <code>js/core/retro.js</code> 的完整倒推分析在该关自己的可达状态图上复算一遍，与闭式逐状态对账；<code>node test/retrograde.test.mjs</code> 会把 k ≤ 3、n ≤ 7 的 512 个状态全部分类核对。</p>
