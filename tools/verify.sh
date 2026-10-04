@@ -99,6 +99,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
     TOTAL_ASSERTS=$((TOTAL_ASSERTS + ${A:-0}))
   done
   echo "node total: rows $TOTAL_ROWS asserts $TOTAL_ASSERTS"
+  # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑（59 仓同形）。「本地全绿、线上 404 自己的
+  # manifest / sw.js / 图标」这一类坏法缺的就是这一步。它不碰 Chrome，所以放在 node suites 里。
+  echo "=== deploy-set ==="
+  node tools/deploy-set.mjs || FAILED=1
+  node tools/deploy-set-selftest.mjs || FAILED=1
 fi
 
 export CDP_PORT
