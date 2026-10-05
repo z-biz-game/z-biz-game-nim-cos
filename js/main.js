@@ -471,7 +471,10 @@ let lastTime = 0;
 let uiBeat = 0;
 
 function togglePause(force) {
-  const next = force === undefined ? (session.phase !== 'paused') : force === false;
+  // force 有值时它就是目标态（true=暂停，false=继续），省略才是"翻一下"。
+  // 写成 `force === false` 会把两者都反过来：「继续」按钮再按一次暂停，
+  // window.nim.setPaused(true) 反而把仿真放行 —— 尺子读到的暂停态因此是假的。
+  const next = force === undefined ? (session.phase !== 'paused') : !!force;
   session.phase = next ? 'paused' : 'playing';
   sim.setPaused(session.phase === 'paused');
   if (session.phase === 'paused') {
