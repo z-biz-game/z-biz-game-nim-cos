@@ -8,7 +8,9 @@
 // ship a position the classifier calls a loss, and this file goes red.
 
 import { test, run, ok, eq } from '../tools/harness.mjs';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import {
@@ -24,6 +26,15 @@ import { naive } from './minimax.mjs';
 import { hashSeed, mulberry32, rngFrom, todayKey } from '../js/core/rng.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+
+// 只读文件头：PNG 的宽高写在 IHDR 里（偏移 16 起两个大端 32 位），签名不对就不是 PNG。
+function pngSize(abs) {
+  const head = readFileSync(abs).subarray(0, 24);
+  if (head.length < 24) return null;
+  if (head.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') return null;
+  if (head.toString('ascii', 12, 16) !== 'IHDR') return null;
+  return [head.readUInt32BE(16), head.readUInt32BE(20)];
+}
 const cellsOf = (heaps) => heaps.reduce((a, h) => a * (h + 1), 1);
 const sumOf = (heaps) => heaps.reduce((a, h) => a + h, 0);
 
@@ -349,6 +360,59 @@ test('the browser cannot search: nothing it loads imports the solver or the gene
   const styles = readFileSync(join(root, 'css/game.css'), 'utf8');
   ok(!/@import|url\(http/.test(styles), 'and neither does the stylesheet');
   eq(/<meta name="viewport"/.test(html), true, 'laid out for a phone');
+});
+
+// 美术资产的落盘审计：清单里声明的每一张图，盘上必须真有一张同尺寸的 PNG。
+// 上一段只硬编码查了 4 个路径存在，这里换成"把引用链全扫一遍 + 读 IHDR 实测宽高"：
+// 商店与爬虫要的是 192/512/180 的真位图，一张 0 字节占位或 SVG 改扩展名都能骗过"存在"，
+// 骗不过尺寸对账。生成器可复现这条也在这里：美术不是手画一次就没人能重画的东西。
+test('every art asset the code names is a real PNG of the size it claims', () => {
+  const files = ['index.html', 'manifest.webmanifest', 'sw.js', 'css/game.css', 'electron/main.cjs'];
+  for (const d of readdirSync(join(root, 'js'), { recursive: true })) {
+    if (String(d).endsWith('.js')) files.push(join('js', String(d)));
+  }
+  const refs = new Map();
+  for (const f of files) {
+    const src = readFileSync(join(root, f), 'utf8');
+    for (const m of src.matchAll(/['"(]\.?\/?(assets\/[A-Za-z0-9._/-]+\.png)['")]/g)) {
+      if (!refs.has(m[1])) refs.set(m[1], f);
+    }
+  }
+  ok(refs.size >= 12, `只扫出 ${refs.size} 条资产引用，审计本身退化了`);
+  for (const [rel, from] of refs) {
+    const abs = join(root, rel);
+    ok(existsSync(abs), `${rel} 被 ${from} 引用但盘上没有`);
+    ok(statSync(abs).size > 0, `${rel} 是 0 字节占位`);
+    const png = pngSize(abs);
+    ok(png !== null, `${rel} 不是 PNG（SVG 改扩展名冒充？）`);
+  }
+  // manifest 声明的 sizes 必须与 IHDR 实测一致：装不上桌面的图标多数是这么坏的。
+  const manifest = JSON.parse(readFileSync(join(root, 'manifest.webmanifest'), 'utf8'));
+  ok(manifest.icons.length >= 2, 'manifest 至少要有 192 与 512');
+  let saw192 = false, saw512 = false;
+  for (const icon of manifest.icons) {
+    const rel = icon.src.replace(/^\.?\//, '');
+    const dim = pngSize(join(root, rel));
+    ok(dim !== null, `${rel} 声明在 manifest 里但不是 PNG`);
+    const [w, h] = icon.sizes.split('x').map(Number);
+    ok(dim[0] === w && dim[1] === h, `${rel} 声明 ${w}x${h}，IHDR 实测 ${dim.join('x')}`);
+    if (w === 192) saw192 = true;
+    if (w === 512) saw512 = true;
+  }
+  ok(saw192 && saw512, 'PWA 安装要 192 与 512 两档，缺一档就装不上');
+  ok(existsSync(join(root, 'assets/gen/make_art.py')), '美术没有可复现的生成脚本');
+  const hasPillow = spawnSync('python3', ['-c', 'import PIL'], { stdio: 'ignore' }).status === 0;
+  if (!hasPillow) {
+    console.log('  skip  生成器复现：这台机器没有 Pillow');
+    return;
+  }
+  const before = new Map();
+  for (const [rel] of refs) before.set(rel, createHash('sha256').update(readFileSync(join(root, rel))).digest('hex'));
+  const rerun = spawnSync('python3', [join(root, 'assets/gen/make_art.py')], { encoding: 'utf8' });
+  eq(rerun.status, 0, `生成器跑挂了：${rerun.stderr}`);
+  for (const [rel, sum] of before) {
+    eq(createHash('sha256').update(readFileSync(join(root, rel))).digest('hex'), sum, `${rel} 重画后变了：生成器不可复现`);
+  }
 });
 
 run();
