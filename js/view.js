@@ -50,6 +50,14 @@ const LABEL = 18;          // room for the heap number
 const BOTTOM = 8;          // floor line above the canvas edge
 const MAX_BAND = 34;       // a stone is never taller than this, however few the heaps
 const MIN_BAND = 13;
+// css 给每个 HUD 按钮立了 44px 的命中下限，可这个游戏真正按的是棋盘上那一条条虚线框：
+// 抬起一堆之后，"这堆剩几枚"就是点中一条 band 高的横条。实测 320/360/390/414/720 宽下
+// band 一律被 MAX_BAND 削到 34px —— 拇指按不中的命中区等于没有这个功能。触屏把上限抬到 44，
+// 鼠标设备维持 34。同时修掉 fit：宽度需求是 n*band+(n-1)*band*GAP，旧写法把 GAP 乘了两遍，
+// 320px 因此连 44 都够不着（54 个关卡全部核对：触屏 ≥320px 最小 44，240px 下限处 38）。
+const STRIP_TOUCH_MIN = 44;
+const COARSE_POINTER = typeof matchMedia === 'function'
+  && matchMedia('(pointer: coarse)').matches;
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -79,7 +87,8 @@ export function createView(canvas, handlers = {}) {
     const n = state.heaps.length;
     const maxN = n ? Math.max(...state.heaps, 1) : 1;
     cssW = Math.max(240, canvas.clientWidth || 320);
-    band = Math.max(MIN_BAND, Math.min(MAX_BAND, Math.floor(((cssW - 2 * PAD) / (n || 1)) * GAP)));
+    const fit = Math.floor((cssW - 2 * PAD) / ((n || 1) + Math.max(0, n - 1) * GAP));
+    band = Math.max(MIN_BAND, Math.min(COARSE_POINTER ? Math.max(MAX_BAND, STRIP_TOUCH_MIN) : MAX_BAND, fit));
     const wantH = (maxN + 1) * band + LABEL + BOTTOM + PAD;
     cssH = Math.max(180, wantH);
     const totalW = n * band + (n - 1) * band * GAP;
