@@ -337,6 +337,13 @@ function goNext() {
 // One tap from the view. `hitAt` is `{ i, to }`, or null for a tap off every column.
 function takeTap(hitAt) {
   const g = session.game;
+  // 暂停的遮罩挡住了手指，但挡不住 window.nim.tap 这类程序化入口：守卫必须写在唯一那条
+  // 下棋通道上，否则幕布上「棋盘上的石子一颗没动」只是一句愿望。
+  if (session.phase === 'paused') {
+    say('已暂停：按 Space 或 P 继续');
+    sound.blip('refuse');
+    return;
+  }
   if (g.done) {
     say('这一局已经结束了：按「重开」或「下一关」');
     sound.blip('refuse');
