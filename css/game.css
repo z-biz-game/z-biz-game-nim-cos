@@ -1,4 +1,6 @@
-/* 尼姆堆 — one dark table, lit stones, no images and no fonts fetched anywhere.
+/* 尼姆堆 — one dark table, lit stones. 这张样式表自己不取任何东西：没有导入语句，没有外链，
+   也没有远程字体。盘上的位图（桌布与石屑）是 js/view.js 从同仓 assets/textures/ 读的真 PNG，
+   读不到就退回原来的程序化画法 —— 少一张桌布，功能一颗不少。
    Layout is a single column on a phone and a board + panel split from 820px up. */
 :root {
   --ink: #e8e6e1;

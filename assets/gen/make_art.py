@@ -153,6 +153,29 @@ def font(size):
     return ImageFont.load_default(size)
 
 
+def wrap_to(draw, text, fnt, max_w):
+    """按实测宽度断行：中日韩没有空格，只能逐字量。`max_w` 是右边距内可用的像素宽。
+
+    这张卡上一版把正文写糊到画布外去了（"倒推分析"被切成"倒推分析"的前半截），
+    所以这里不是"排版好看一点"，是让文字全部落在盘上——宁可多出一行，不许少一个字。
+    """
+    lines = []
+    for hard in str(text).split('\n'):
+        cur = ''
+        for ch in hard:
+            if draw.textlength(cur + ch, font=fnt) <= max_w:
+                cur += ch
+                continue
+            lines.append(cur)
+            cur = ch.lstrip()
+        lines.append(cur)
+    for ln in lines:
+        if draw.textlength(ln, font=fnt) > max_w:
+            raise RuntimeError('一行文字比可用宽度还长，必然被切掉: %r (%.0f > %.0f)'
+                               % (ln[:12], draw.textlength(ln, font=fnt), max_w))
+    return lines
+
+
 def og_card():
     """1200x630 社交卡：左边同一条 1|2|3，右边写它读出来的三个数。"""
     w, h = 1200, 630
@@ -171,14 +194,24 @@ def og_card():
     divide = pad + n * (cw + gap) + 34
     d.line((divide, pad, divide, h - pad), fill=LINE, width=2)
     tx = divide + 56
-    d.text((tx, pad - 6), '尼姆堆', font=font(92), fill=INK)
-    d.text((tx, pad + 118), 'NIM · 每一关的难度都是一次测量', font=font(32), fill=INK_DIM)
-    d.text((tx, pad + 176), '1 ⊕ 2 ⊕ 3 = 0   后手必胜的 P 位', font=font(38), fill=PICK)
-    d.text((tx, pad + 244),
-           'outcome 是 Bouton 闭式判定，par 是完整倒推分析\n'
-           '量出来的最优局长，两者逐态对账，不是估值。',
-           font=font(27), fill=INK_DIM, spacing=12)
-    d.text((tx, h - pad - 52), '取最后一枚者胜 · 或负 · 对手是完美玩家', font=font(28), fill=WIN)
+    avail = w - pad - tx          # 右边距之内才是能写字的地方，超出一个像素都算画坏了
+    f_title, f_sub, f_form, f_body, f_foot = font(92), font(32), font(38), font(27), font(28)
+    y = pad - 6
+    blocks = [
+        (wrap_to(d, '尼姆堆', f_title, avail), f_title, INK),
+        (wrap_to(d, 'NIM · 每一关的难度都是一次测量', f_sub, avail), f_sub, INK_DIM),
+        (wrap_to(d, '1 ⊕ 2 ⊕ 3 = 0  后手必胜的 P 位', f_form, avail), f_form, PICK),
+        (wrap_to(d, 'outcome 是 Bouton 闭式判定，par 是完整倒推分析量出来的'
+                    '最优局长，两者逐态对账，不是估值。', f_body, avail), f_body, INK_DIM),
+    ]
+    for lines, fnt, color in blocks:
+        for ln in lines:
+            d.text((tx, y), ln, font=fnt, fill=color)
+            y += int(fnt.size * 1.32) + 10
+        y += 6
+    foot = wrap_to(d, '取最后一枚者胜 · 或负 · 对手是完美玩家', f_foot, avail)
+    # 页脚钉在正文流之下：文案一改多出一行，也不许和它叠在一起
+    d.text((tx, max(h - pad - 52, y + 10)), foot[0], font=f_foot, fill=WIN)
     return img.convert('RGB')
 
 
