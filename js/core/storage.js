@@ -8,11 +8,8 @@
 // `node --test` process, which has no window to begin with.
 
 const KEY = 'nim.save.v1';
-const PROBE = 'nim.probe';
-
-// 探针只做一次：每个载体第一次被拿到时试写一个临时键，随即抹掉。之后每次都写再抹，
-// 会让"存档只占一个键"的账算不平，也只是白白多打一圈同步 IO。
-let probed = null;
+// 存档格式版本号。写档带上、读档校验：将来改形状时旧档宁可整档丢弃，也不能被误读。
+export const SAVE_VERSION = 1;
 
 function backend() {
   try {
@@ -99,6 +96,7 @@ function decodeSettings(obj) {
 
 function blank() {
   return {
+    v: SAVE_VERSION,
     records: {},
     daily: {},
     unlocked: 1,
@@ -110,6 +108,39 @@ function blank() {
 let cache = null;
 let droppedRecords = 0;
 
+// 数字字段的归一自带一份，不依赖仓里有没有 count() —— 少一层隐式耦合。
+function recordNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+// 存档两段式解码的第一段：整档 JSON 落到这里之后，**逐字段**归一。
+// 一条记录不是"能用/不能用"二选一 —— 类型错的字段自己退成默认值，整条照样留下。
+// 第二段（sanitizeRecords）在下面：它只丢掉归一后彻底没意义的记录，别的记录不受牵连。
+function sanitizeRecord(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const out = {};
+  out.plays = recordNum(r.plays);
+  out.won = !!r.won;
+  out.lastWon = !!r.lastWon;
+  out.lastPlies = recordNum(r.lastPlies);
+  out.best = r.best === null || r.best === undefined ? null : recordNum(r.best);
+  out.perfect = !!r.perfect;
+  out.par = r.par === null || r.par === undefined ? null : recordNum(r.par);
+  return out;
+}
+
+// 逐条隔离：坏的那条丢掉，好的那些原样留下，绝不因为一条把整份存档作废。
+function sanitizeRecords(p) {
+  const out = {};
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+  for (const [id, rec] of Object.entries(p)) {
+    const clean = sanitizeRecord(rec);
+    if (clean) out[id] = clean;
+  }
+  return out;
+}
+
 function load() {
   if (cache) return cache;
   const ls = backend();
@@ -117,13 +148,15 @@ function load() {
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && typeof p === 'object' && !Array.isArray(p)) {
+      // 版本门：只认本仓写出去的版本。将来升 v2 时，旧档宁可整档丢弃也不能被误读成新档。
+      if (p && typeof p === 'object' && !Array.isArray(p)
+          && (p.v === undefined || p.v === SAVE_VERSION)) {
         const base = blank();
         const dec = decodeRecords(p.records);
         droppedRecords = dec.dropped;
         cache = {
-          records: dec.records,
-          daily: decodeDaily(p.daily),
+          records: sanitizeRecords(p.records),
+          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
           unlocked: count(p.unlocked) || base.unlocked,
           stats: {
             plays: count((p.stats || {}).plays),

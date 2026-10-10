@@ -1,27 +1,26 @@
 {
-  "name": "尼姆堆 · NIM",
-  "short_name": "NIM",
-  "description": "轮流从一堆里取走石子，取走最后一枚者胜（或者负）。每一关的必胜判定与最优局长都由闭式异或定理给出，并被一次完整的倒推分析全量复算。",
-  "lang": "zh-CN",
-  "dir": "ltr",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "name": "尼姆堆",
+  "short_name": "尼姆堆",
+  "start_url": ".",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui", "browser"],
-  "orientation": "any",
-  "background_color": "#14161a",
-  "theme_color": "#14161a",
-  "categories": ["games", "puzzle", "education"],
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
   "icons": [
-    { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "./assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "./assets/icons/master-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
-    { "src": "./assets/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
-  ],
-  "shortcuts": [
-    { "name": "每日一题", "short_name": "每日一题", "url": "./#/daily", "description": "全平台同一堆石子，按日期取" },
-    { "name": "战役", "short_name": "战役", "url": "./#/", "description": "从存档指针所在的那一关继续" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
