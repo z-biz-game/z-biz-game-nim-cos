@@ -20,7 +20,7 @@
 | **App 名称** | 尼姆堆 | `head -1 README.md` → `# 尼姆堆 · NIM`（取中文部分） |
 | 仓 | `/Users/zifang/workplace/ceo_workplace/z-biz-game/z-biz-game-nim-cos` | — |
 | 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:52-59`）；`node tools/playtest.mjs eval @routes` |
-| 测试钩子 | `window.nim` | `js/main.js:414` 的 `nim`；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
+| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:414`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
 | 主张 | `outcome`/`winMoves` 由 Bouton 闭式给出，`par` 由完整倒推分析给出，两者**逐态对账** | `node --test test/retrograde.test.mjs`、`node tools/bake.mjs` |
 | node 层 | 55 行具名检查 / **11,162 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
 | 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | `bash tools/verify.sh`；只跑台架：`SKIP_UNIT=1 SCENARIOS=pointer bash tools/verify.sh` |

@@ -43,6 +43,21 @@ const expandCite = (m) => {
 // 里前一个是路径，把它当表达式就会要求 src/Models/swift 这些词落在被引窗口里——假红。
 const PATHISH = new RegExp('^' + PATH_SRC + '(?::[\\d,，\\s-]*)?$');
 const isPathish = (s2) => PATHISH.test(s2.trim());
+// 反引号里那一段的四种身份：路径 / 点号标识符 / 定址不到的路径形状 / 表达式。
+// 以前这里只有 isPathish 一刀切，于是 `window.nim`（`js/main.js:414`）被当成路径整条 continue：
+// 锚点既不进「条带指认」也不判——隐形（不是红，是根本没被数到）。2026-10-22 按本地树实测这种前指式
+// 有 18 处（8 仓：window.kaku / window.pour / rng.range / Game.setEdge / tier.patience …）。
+// 判据换成「能不能定址到盘上的文件」：能定址才是路径；`a.b` 这种不能定址、又符合标识符形状的，
+// 是按点号访问的名字，交给下面同一套「接收者查文件、成员词查那几行」的判法。
+const DOTTED = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
+const spanKind = (s2) => {
+  const t = s2.trim().replace(/:.*$/, '');
+  if (!isPathish(s2)) return 'expr';
+  const r = resolve(t);
+  if (r.rel || r.why === 'ambiguous') return 'path';
+  if (DOTTED.test(t)) return 'dotted';
+  return 'unresolved-path';   // 看着像路径又定址不到：由引用那一头（D3/仓外）点名，不当成标识符锚点
+};
 const IDENT_BEFORE = new RegExp('`([A-Za-z_$][\\w$]{2,})`[ \\t]*(?:（|\\(|→|—|–|-)?[ \\t]*`(?:' + PATH_SRC + '):[\\d-]+`', 'g');
 // 后指的间隔词不写死「的」：iOS 文档里同一个形状写成「`path:7` — `ColoringChapter`」「`path:52`、`ItemCategory`」，
 // 只认「的」的那一版让这些锚点隐形（漏认的不是漂，是解析器少一条边）
@@ -239,7 +254,8 @@ for (const doc of docs) {
     // 引号里是一段带空格/运算符的代码而不是一个标识符 —— 取其中所有标识符，逐个要求出现在被指范围
     for (const m of line.matchAll(EXPR_BEFORE)) {
       const expr = m[1];
-      if (isPathish(expr)) continue;                          // 那是路径不是表达式（见 PATHISH）
+      const kind = spanKind(expr);
+      if (kind === 'path' || kind === 'unresolved-path') continue;  // 那是路径不是表达式（见 PATHISH/spanKind）
       if (/^[A-Za-z_$][\w$]*$/.test(expr.trim())) continue; // 单个标识符已被上面两式认走
       const all = [...new Set((expr.match(/[A-Za-z_$][\w$]{2,}/g) || []))];
       // 点号访问的接收者是类型名，不是那一行里的词：`Card24Engine.deal(level:)`（`Card24Engine.swift:37`）
@@ -347,6 +363,24 @@ gate('D5b 反空转：行号表要逐格展开（逗号格、斜杠格、格内�
   + `「230-243, 277-289」展开 ${e3.length} 根（${e3.map((x) => `${x.a}-${x.b}`).join(' + ') || '没有'}，第二根必须是范围不是单行）；`
   + `「147/185/344/379」展开 ${c4.length ? expandCite(c4[0]).length : 0} 根；`
   + '且「`src/…swift:197,202,216`」判为路径、「`steps > 0 || focusSeconds > 0`」判为表达式');
+
+// 身份判定的每一向都要有合成靶子：拿本仓真文件当靶子时，仓里一旦没有某种形状，读数看着仍像测过。
+// 这一条防的是 D5b 那次修反方向时留的洞——isPathish 一刀切会把 `window.nim` 这类点号标识符
+// 判成路径并整条丢掉（隐形 0 条锚点），分类器换名不换病。
+gate('D5c 反空转：span 身份按「能否定址到盘上的文件」判——能定址才是路径，定址不到的 `a.b` 是锚点',
+  (() => {
+    cache.set('ctrl/path/Holder.mjs', ['const a = 1;']);   // 合成一份"盘上的文件"，不依赖本仓恰好有什么
+    const p = spanKind('ctrl/path/Holder.mjs:12');
+    const p2 = spanKind('ctrl/path/Holder.mjs');
+    const d = spanKind('window.ctrlHolderZz');
+    const d2 = spanKind('rng.ctrlRangeZz.range');
+    const e = spanKind('steps > 0 || focusSeconds > 0');
+    const u = spanKind('src/ctrl/Nope_zz.swift:197,202');
+    cache.delete('ctrl/path/Holder.mjs');
+    return p === 'path' && p2 === 'path' && d === 'dotted' && d2 === 'dotted' && e === 'expr' && u === 'unresolved-path';
+  })(),
+  '合成六个 span：`ctrl/path/Holder.mjs:12` 与去掉行号的同一份都判 path、`window.ctrlHolderZz` 与三段点号判 dotted、'
+  + '带运算符的判 expr、盘上没有又带斜杠的 `src/ctrl/Nope_zz.swift:197,202` 判 unresolved-path（六个方向缺一向就是分类器漏边）');
 
 // 反空转：刀在内存里改判据的输入，不碰盘上任何文件（改文件就挪行号，会把别的判据一起带漂）。
 // 这三把刀都打 judge()/wholeIn() 这两个「和主循环同一个函数」，靶子由合成输入给出：
