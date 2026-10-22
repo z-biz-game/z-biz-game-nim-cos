@@ -62,7 +62,7 @@ const IDENT_BEFORE = new RegExp('`([A-Za-z_$][\\w$]{2,})`[ \\t]*(?:（|\\(|→|�
 // 后指的间隔词不写死「的」：iOS 文档里同一个形状写成「`path:7` — `ColoringChapter`」「`path:52`、`ItemCategory`」，
 // 只认「的」的那一版让这些锚点隐形（漏认的不是漂，是解析器少一条边）
 const SEP = '[ \\t]*(?:的|[—–→]|、|，|,|:|：|[\\s]\\-[\\s]|(?<=[\\d`])[ \\t]+)+[ \\t]*';
-const IDENT_AFTER = new RegExp('`(?:' + PATH_SRC + '):[\\d-]+`' + SEP + '`([A-Za-z_$][\\w$]{2,})`', 'g');
+const IDENT_AFTER = new RegExp('`(?:' + PATH_SRC + '):[\\d-]+`' + SEP + '`([A-Za-z_$][\\w$]{2,}(?:\\.[A-Za-z_$][\\w$]{2,})*)`', 'g');
 const IDENT_SPAN = new RegExp('`(' + PATH_SRC + '):(\\d{1,5})[ \\t]+([A-Za-z_$][\\w$]{2,})`', 'g');
 const EXPR_BEFORE = new RegExp('`([^`\\n]{3,60}?)`[ \\t]*(?:（|\\()[ \\t]*`(' + PATH_SRC + '):(\\d{1,5})(?:\\s*[-–]\\s*(\\d{1,5}))?`', 'g');
 // 点号访问拆接收者与成员（主循环和 D6e 那把刀共用这一个函数）
@@ -239,14 +239,24 @@ for (const doc of docs) {
           if (t.why !== 'outside') bad.push(`${site} 锚点 ${name} 的 ${cm[1]} 定址不到`);
           continue;
         }
+        // 后指式的名字现在允许点号（`js/main.js:414` 的 `window.nim`）：同一套 splitRecv 判法，
+        // 成员词进窗口、接收者查文件。单标识符那条老路一字不改（消息文案被台账引用着）。
+        const all = [...new Set((name.match(/[A-Za-z_$][\w$]{2,}/g) || []))];
+        const { recv: recvName, toks } = name.includes('.') ? splitRecv(name, all) : { recv: null, toks: [name] };
         // 歧义时每个候选都要含这个名字：只写文件名就意味着"哪一份都得对"
         for (const rel2 of t.list) {
           const src = linesOf(rel2);
           const a = Number(cm[2]), b = Number(cm[3] || cm[2]);
           const win = src.slice(Math.max(0, a - 1), Math.min(src.length, b + 2)).join('\n');
-          if (!new RegExp('(^|[^\\w$])' + name.replace(/\$/g, '\\$') + '([^\\w$]|$)').test(win)) {
-            bad.push(`${site} 引用 ${rel2}:${a}${b !== a ? '-' + b : ''} 那几行里没有 ${name}（整词）`);
+          if (!name.includes('.')) {
+            if (!new RegExp('(^|[^\\w$])' + name.replace(/\$/g, '\\$') + '([^\\w$]|$)').test(win)) {
+              bad.push(`${site} 引用 ${rel2}:${a}${b !== a ? '-' + b : ''} 那几行里没有 ${name}（整词）`);
+            }
+            continue;
           }
+          const miss = toks.filter((x) => !new RegExp('(^|[^\\w$])' + x.replace(/\$/g, '\\$') + '([^\\w$]|$)').test(win));
+          if (recvName && !new RegExp('(^|[^\\w$])' + recvName.replace(/\$/g, '\\$') + '([^\\w$]|$)').test(src.join('\n'))) miss.push(recvName + '（接收者不在这个文件里）');
+          if (miss.length) bad.push(`${site} 引用 ${rel2}:${a}${b !== a ? '-' + b : ''} 那几行里没有 ${miss.join('、')}（点号锚点要求逐词在）`);
         }
       }
     }
@@ -376,11 +386,15 @@ gate('D5c 反空转：span 身份按「能否定址到盘上的文件」判—�
     const d2 = spanKind('rng.ctrlRangeZz.range');
     const e = spanKind('steps > 0 || focusSeconds > 0');
     const u = spanKind('src/ctrl/Nope_zz.swift:197,202');
+    // 后指式的名字捕获也要吃得到点号：上一版只允许单标识符，`path:NN` 的 `a.b` 一样隐形
+    const af = [...'`js/ctrl/main.mjs:414` 的 `window.ctrlHolderZz`'.matchAll(new RegExp(IDENT_AFTER.source, 'g'))];
     cache.delete('ctrl/path/Holder.mjs');
-    return p === 'path' && p2 === 'path' && d === 'dotted' && d2 === 'dotted' && e === 'expr' && u === 'unresolved-path';
+    return p === 'path' && p2 === 'path' && d === 'dotted' && d2 === 'dotted' && e === 'expr' && u === 'unresolved-path'
+      && af.length === 1 && af[0][1] === 'window.ctrlHolderZz';
   })(),
-  '合成六个 span：`ctrl/path/Holder.mjs:12` 与去掉行号的同一份都判 path、`window.ctrlHolderZz` 与三段点号判 dotted、'
-  + '带运算符的判 expr、盘上没有又带斜杠的 `src/ctrl/Nope_zz.swift:197,202` 判 unresolved-path（六个方向缺一向就是分类器漏边）');
+  '合成六个 span + 一条后指式：`ctrl/path/Holder.mjs:12` 与去掉行号的同一份都判 path、`window.ctrlHolderZz` 与三段点号判 dotted、'
+  + '带运算符的判 expr、盘上没有又带斜杠的 `src/ctrl/Nope_zz.swift:197,202` 判 unresolved-path、'
+  + '「`js/ctrl/main.mjs:414` 的 `window.ctrlHolderZz`」必须把带点的整个名字捕获到（七向缺一即分类器或文法漏边）');
 
 // 反空转：刀在内存里改判据的输入，不碰盘上任何文件（改文件就挪行号，会把别的判据一起带漂）。
 // 这三把刀都打 judge()/wholeIn() 这两个「和主循环同一个函数」，靶子由合成输入给出：
