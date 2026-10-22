@@ -33,6 +33,10 @@ jobs:
       # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
       - name: Deploy set gate proves it can fail
         run: node tools/deploy-set-selftest.mjs
+      # 文档行号对账：文档里每一处 `文件:行号` 都回真树重读一遍，闸本轮实量到的五个读数
+      # 也必须被文档原样抄走（一处都不写同样是红）。这一腿以前只在盘上，没人调它。
+      - name: Doc citation gate
+        run: node tools/docs-test.mjs
 
   # The shell is only proven by driving a real page with real input events.
   browser:

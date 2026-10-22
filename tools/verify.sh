@@ -104,6 +104,10 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   echo "=== deploy-set ==="
   node tools/deploy-set.mjs || FAILED=1
   node tools/deploy-set-selftest.mjs || FAILED=1
+  # 文档行号对账：ci.yml 的 unit job 有这一步，本地整闸以前不跑——「文档抄的行号漂了而本地全绿」
+  # 缺的就是这一条。它只读文档与源码文本，不碰 Chrome，所以和 deploy-set 放在同一段。
+  echo "=== docs ==="
+  node tools/docs-test.mjs || FAILED=1
 fi
 
 export CDP_PORT

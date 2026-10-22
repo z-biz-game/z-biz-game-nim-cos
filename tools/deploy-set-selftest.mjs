@@ -248,6 +248,20 @@ if (dataIcons.length) {
   line('X13 SKIP · manifest 里没有内联 data:image/png 图标（这一仓的位图都是文件）');
 }
 
+// X14 抄写方说谎：README 的「钉住两个数」那一格印的就是 deploy-set 顶部那对常量。
+// 针从 README 现文里正则取（不写死 31/51）：常量下一次涨了，写死的针会打空，edit() 会当场拒绝，
+// 但那等于这一刀不存在——所以宁可让它跟着现文走。这一刀的靶子不需要挑：README 一直在盘上。
+{
+  const t = read(ROOT, 'README.md');
+  const m = /路径条数（`\d+`）与这一次跑的断言条数（`\d+`）/.exec(t);
+  if (!m) {
+    line('X14 无靶子 · README 里搜不到那一格（W5 会自己红，因为它要求恰好一处）');
+    bad += 1;
+  } else if (!knife('X14 README 抄的钉数与常量不符', ['W5'], (dir) => {
+    edit(dir, 'README.md', m[0], m[0].replace(/（`(\d+)`）$/, (s, d) => `（\`${Number(d) + 1}\`）`));
+  }, () => '断言条数被抄成了下一个数')) bad += 1;
+}
+
 // X8 workflow 不走那份清单（回到手抄三行的世界）。针打的是**调用那一行**：pages.yml 的注释里
 // 也写着这个路径，拿路径当针会命中两次，edit() 会拒绝——那正是 W2 不该认散文的理由。
 if (!knife('X8 pages.yml 不调 assemble', ['W2'], (dir) => {
