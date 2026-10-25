@@ -19,8 +19,8 @@
 |---|---|---|
 | **App 名称** | 尼姆堆 | `head -1 README.md` → `# 尼姆堆 · NIM`（取中文部分） |
 | 仓 | `/Users/zifang/workplace/ceo_workplace/z-biz-game/z-biz-game-nim-cos` | — |
-| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:52-59`）；`node tools/playtest.mjs eval @routes` |
-| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:414`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
+| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:57-64`）；`node tools/playtest.mjs eval @routes` |
+| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:455`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
 | 主张 | `outcome`/`winMoves` 由 Bouton 闭式给出，`par` 由完整倒推分析给出，两者**逐态对账** | `node --test test/retrograde.test.mjs`、`node tools/bake.mjs` |
 | node 层 | 55 行具名检查 / **11,162 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
 | 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | `bash tools/verify.sh`；只跑台架：`SKIP_UNIT=1 SCENARIOS=pointer bash tools/verify.sh` |
@@ -254,7 +254,7 @@ core purity clean、无幽灵导出、无密钥样式串。
 
 一处必须写下来的返工：发布前门禁报过 `ghostExports(js/core/heaps.js: encode, decode, describe)`。
 查证后三者在全仓（含 `test/`、`tools/`，也含 heaps.js 自身）都是**零引用**：分享链接走的是
-`#/lot/<id>`（`js/main.js:372`），棋谱文字由 `js/main.js:261` 的 `text` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
+`#/lot/<id>`（`js/main.js:413`），棋谱文字由 `js/main.js:266` 的 `text` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
 比 `describe` 更信息完整）。所以按"确定未使用就彻底删掉"处理，三个函数一并删除；删掉 `describe`
 之后 `taken` 也失去唯一调用者，同样移除。README/DESIGN/deliverable 三处文档都从未提到这四个名字
 （已 grep 核对），因此不产生文档漂移。

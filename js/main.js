@@ -23,6 +23,10 @@ import { ALL, BANDS, byId, dailyLot, levelAt, lotsIn } from './core/library.js';
 import { store } from './core/storage.js';
 import { todayKey } from './core/rng.js';
 import { createView } from './view.js';
+// 听觉与触觉这两路反馈：视觉与数值之外，桌面上还该有"听得见"的一路。
+// 音频模块自己管手势解锁与真静音（suspend），这里只管把音接到真实事件上。
+import { audio } from './audio.js';
+import { haptics } from './haptics.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -45,6 +49,7 @@ const session = {
   scored: false,
   dailyKey: todayKey(),
   toastTimer: 0,
+  echoTimer: 0,
   nextId: null,
 };
 const errors = [];
@@ -285,23 +290,34 @@ function goNext() {
 }
 
 // One tap from the view. `hitAt` is `{ i, to }`, or null for a tap off every column.
+//
+// 声音接在这条路径上，因为这条路径上发生的是**真实事件**：
+//   · 抬起一堆 / 放下抬起的那堆 → tap / move（还没走子，只是手在动）
+//   · 引擎拒了这一手 → wrong（引擎说不合法，壳层只是把它念出来）
+//   · 引擎认了这一手 → correct（一次有效操作成功）
+//   · 这一手把局面收完了 → win / lose（谁赢是 core/game.js 的 settle 判的，这里不猜）
 function takeTap(hitAt) {
   const g = session.game;
   if (g.done) {
     say('这一局已经结束了：按「重开」或「下一关」');
+    audio.play('blocked');        // 局已经收尾：这一下不是"错"，是"来晚了"
     return;
   }
   if (!hitAt) {
     session.selected = -1;
+    audio.play('move');           // 放下抬起的那堆：手松开了
     draw();
     return;
   }
   if (session.selected < 0) {
     if (!g.heaps[hitAt.i]) {
       say('那一堆是空的');
+      audio.play('wrong');
       return;
     }
     session.selected = hitAt.i;
+    audio.play('tap');            // 抬起一堆
+    haptics.tap();
     draw();
     return;
   }
@@ -309,12 +325,16 @@ function takeTap(hitAt) {
     // Deliberately inert. "One heap per move" is a rule of the game, so the shell refuses to
     // turn a cross-heap tap into anything at all: no ply, no reply, no history entry.
     say('一次只能动一堆：先点棋盘空白处放下抬起的那堆');
+    audio.play('wrong');
+    haptics.wrong();
     return;
   }
   const move = { i: session.selected, to: hitAt.to };
   const r = play(g, move);
   if (!r.ok) {
     say(r.reason);
+    audio.play('wrong');
+    haptics.wrong();
     session.selected = -1;
     draw();
     return;
@@ -324,6 +344,25 @@ function takeTap(hitAt) {
   if (r.ai) logMove(r.ai, r.kind);
   settleRecord();
   draw();
+  if (g.done) {
+    // 这一手把局面收完了。谁赢谁输是 core/game.js 的 settle 判出来的（`g.winner`），
+    // 这里不自己数一遍石子 —— 两处各数一次迟早会对不上。
+    if (g.winner === 'you') {
+      audio.play('win');
+      haptics.correct();
+    } else {
+      audio.play('lose');
+      haptics.wrong();
+    }
+    return;
+  }
+  audio.play('correct');         // 一次有效操作成功
+  haptics.correct();
+  if (r.ai) {
+    // 对手的回应紧接着就落在同一帧里，挪半拍再响：两个音叠在一起谁也听不清。
+    clearTimeout(session.echoTimer);
+    session.echoTimer = setTimeout(() => audio.play('move'), 110);
+  }
 }
 
 function liftOnly(i) {
@@ -338,10 +377,12 @@ const view = createView(el.board, { tap: (hitAt) => takeTap(hitAt) });
 el.undo.addEventListener('click', () => {
   if (!undo(session.game)) {
     say('还没有可回退的一步');
+    audio.play('wrong');
     return;
   }
   session.selected = -1;
   session.log.push({ side: 'you', text: '回退一手（连同对手的回应一起收回）' });
+  audio.play('move');            // 回退：盘面退了一步
   draw();
 });
 
@@ -517,4 +558,27 @@ window.nim = {
   window.addEventListener('webkitfullscreenchange', sync);
   window.addEventListener('MSFullscreenChange', sync);
   sync();
+})();
+
+// ---- 音效开关（#btn-sound）----
+//
+// 静音走 `audio.setMuted(true)`，那是 `ctx.suspend()`：整个 AudioContext 挂起。
+// **不许**改成像"把 master.gain 拧到 0"那样 —— 只拧 gain 是假静音：节点照建、时钟照跑，
+// 取消静音之后还有一截尾巴在响。真正的静音必须是挂起整个上下文。
+//
+// 按钮找不到就不装（和全屏那一条同一条纪律）：留一串没人按的代码等于没做这个功能。
+(function bindSound() {
+  const btn = document.getElementById('btn-sound');
+  if (!btn) return;
+  function paint() {
+    const on = !audio.muted;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? '音效：开' : '音效：关';
+    btn.title = on ? '点击关闭音效' : '点击开启音效';
+  }
+  btn.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    paint();
+  });
+  paint();
 })();
