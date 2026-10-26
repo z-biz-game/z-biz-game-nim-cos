@@ -19,13 +19,18 @@
 |---|---|---|
 | **App 名称** | 尼姆堆 | `head -1 README.md` → `# 尼姆堆 · NIM`（取中文部分） |
 | 仓 | `/Users/zifang/workplace/ceo_workplace/z-biz-game/z-biz-game-nim-cos` | — |
-| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `js/main.js:52-59`（`parseRoute`）；`node tools/playtest.mjs eval @routes` |
-| 测试钩子 | `window.nim` | `js/main.js:414`；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
+| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:57-64`）；`node tools/playtest.mjs eval @routes` |
+| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:457`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
 | 主张 | `outcome`/`winMoves` 由 Bouton 闭式给出，`par` 由完整倒推分析给出，两者**逐态对账** | `node --test test/retrograde.test.mjs`、`node tools/bake.mjs` |
 | node 层 | 56 行具名检查 / **11,196 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
 | 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | 最后一次真实跑是 2026-10-02 之前；本轮派工单禁起 Chrome，**未复跑**，见文末 |
 | 台架端口 | 网页 **:5193**，DevTools **:9353**（不撞 :5180/:9340 与兄弟仓的 :5181/:9341、:5185-:5192/:9344-9352） | `tools/verify.sh:20-22`；开头有端口被占的自检 `exit 9` |
 | 依赖 | `dependencies {}`、`devDependencies {}`；位图是生成物：`assets/gen/make_art.py` 现算 17 张 PNG，重跑 md5 逐字节一致 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"`；`python3 assets/gen/make_art.py && md5 -r assets/**/*.png` |
+| node 层 | 55 行具名检查 / **11,162 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
+| 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | `bash tools/verify.sh`；只跑台架：`SKIP_UNIT=1 SCENARIOS=pointer bash tools/verify.sh` |
+| 台架端口 | 网页 **:5193**，DevTools **:9353**（不撞 :5180/:9340 与兄弟仓的 :5181/:9341、:5185-:5192/:9344-9352） | `tools/verify.sh:22` 的 `CDP_PORT`、`tools/verify.sh:23` 的 `WEB_PORT`；开头有端口被占的自检 `exit 9` |
+| 依赖 | `dependencies {}`、`devDependencies {}`，零二进制资产 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"` |
+
 | 产物可复现 | 重跑烘焙 → `js/data/lots.js` **byte-identical**（md5 `1dd4fa0d91fae2e944ae6d7aaee17c21`） | `node tools/bake.mjs && md5 -q js/data/lots.js` |
 
 ---
@@ -213,13 +218,15 @@ GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success
 
 一次被实测推翻的假设，记录在此免得后人重走：先把锅算到"测量顺序"上，改成"写完 `style.height`
 再回读盒、只有读回的宽与算出的宽相等才落 backing store"（四轮上限）。在关掉 gutter 规则、只留
-这个回读的隔离跑里，`@boot` 仍然 `rows: 20 fail: 1`，回显 `{"css": [605,180], "backing": [620,180]}`
+这个回读的隔离跑里，`@boot` 仍然 20 条里 1 条红（本节的浏览器回显一律不写成 `rows: N fail: N`
+那对冒号文法——那一文法被 `tools/docs-test.mjs` 的盖章占着，写成冒号就会绿着指到隔壁那一腿），
+回显 `{"css": [605,180], "backing": [620,180]}`
 ——因为宽度的变化根本不发生在我们的那一次写之后。那段回读代码已删除。真正管用的是两个各能
 单独封住这条边的改动：
 
 * `js/view.js`：给 canvas 挂 `ResizeObserver`，盒宽与 `layout()` 上次用的宽不一致就重画。
   单独生效的实测：关掉 gutter 规则、经典滚动条形态下 `canvas backing store: 605x180`、
-  `@boot rows: 20 fail: 0`、控制台无 `ResizeObserver loop` 告警（比较的是宽度而不是高度，
+  `@boot` 20 条 0 红、控制台无 `ResizeObserver loop` 告警（比较的是宽度而不是高度，
   所以自己改高度不会把自己再触发一遍）。
 * `css/game.css`：`html { scrollbar-gutter: stable }`。探针实测同一只 `width:100%` 的盒在溢出
   与不溢出两态都是 961px——宽度不再由高度决定，反馈边从源头拆掉；overlay 平台预留 0，
@@ -229,8 +236,8 @@ GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success
 
 | 滚动条形态 | `canvas backing store` 回显 | `@boot` | 浏览器层 |
 | --- | --- | --- | --- |
-| macOS overlay（`bash tools/verify.sh`） | 620x180 | rows: 20 fail: 0 | rows 126，0 fail，`=== ALL GREEN ===` |
-| 经典 15px（`CHROME_EXTRA_FLAGS=...`，runner 形态） | 605x180 | rows: 20 fail: 0 | rows 126，0 fail，`=== ALL GREEN ===` |
+| macOS overlay（`bash tools/verify.sh`） | 620x180 | `@boot` 20 条 0 红 | rows 126，0 fail，`=== ALL GREEN ===` |
+| 经典 15px（`CHROME_EXTRA_FLAGS=...`，runner 形态） | 605x180 | `@boot` 20 条 0 红 | rows 126，0 fail，`=== ALL GREEN ===` |
 
 `tools/verify.sh` 新增 `CHROME_EXTRA_FLAGS`（默认空，CI 的命令与行为不变）来跑第二行。
 下面这张资源表是修好**之前**那次发布（sha `0b96886`）的快照，push 之后按线上新 sha 重取。
@@ -246,7 +253,7 @@ GitHub check-runs 查 HEAD 得到 `deploy=success | build=success | unit=success
 
 runner 侧同一 sha 的三个 job 自己打印出来的（不是本机数字搬过去）：unit job 五个套件
 `rows: 11/11/10/11/12`、`asserts: 84/6245/3076/1648/109`，全部 `fail: 0`；browser job 回显
-`canvas backing store: 605x180`、`@boot rows: 20 fail: 0`、六个场景 `rows: 20/32/24/15/9/26`
+`canvas backing store: 605x180`、`@boot` 20 条 0 红、六个场景 `rows: 20/32/24/15/9/26`
 全部 `fail: 0`、`browser total: rows 126`、`=== ALL GREEN ===`，job conclusion success。
 
 主代理门禁（本机 headless Chrome，DevTools :9353 / web :5193）：`npm run check` rc=0；
@@ -255,7 +262,7 @@ core purity clean、无幽灵导出、无密钥样式串。
 
 一处必须写下来的返工：发布前门禁报过 `ghostExports(js/core/heaps.js: encode, decode, describe)`。
 查证后三者在全仓（含 `test/`、`tools/`，也含 heaps.js 自身）都是**零引用**：分享链接走的是
-`#/lot/<id>`（`js/main.js:372`），棋谱文字由 `js/main.js:261` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
+`#/lot/<id>`（`js/main.js:415`），棋谱文字由 `js/main.js:266` 的 `text` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
 比 `describe` 更信息完整）。所以按"确定未使用就彻底删掉"处理，三个函数一并删除；删掉 `describe`
 之后 `taken` 也失去唯一调用者，同样移除。README/DESIGN/deliverable 三处文档都从未提到这四个名字
 （已 grep 核对），因此不产生文档漂移。

@@ -35,7 +35,7 @@ const EXPECT_CHECKS = 31;
 // 全绿时这个闸实际跑的断言条数（W/R/P 三段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 50;
+const EXPECT_ROWS = 51;
 
 let rows = 0;
 const fails = [];
@@ -335,6 +335,16 @@ for (const e of entries) {
 }
 
 if (cleanup) fs.rmSync(site, { recursive: true, force: true });
+
+// 抄写方自己进断言。README 的「钉住两个数」那一格印的就是上面那对常量，而这条句子以前没有任何
+// 腿读得到：常量从 49 涨到 50 的那一次，文档留在 49，全舰队一片绿。现在把"文档抄的等于钉的"
+// 变成一条判据——写旧数、写两处、一处不写，都点名红。放在 R13 之前，所以这一条也算进 EXPECT_ROWS。
+const DOC_PINS = [...fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8')
+  .matchAll(/路径条数（`(\d+)`）与这一次跑的断言条数（`(\d+)`）/g)];
+ok(DOC_PINS.length === 1 && Number(DOC_PINS[0][1]) === EXPECT_CHECKS && Number(DOC_PINS[0][2]) === EXPECT_ROWS,
+  'W5 README 抄的那两个数就是文件里钉着的这一对常量（写旧数 / 抄两处 / 一处不写都要红）',
+  `闸钉 ${EXPECT_CHECKS} 与 ${EXPECT_ROWS}；文档里搜到 ${DOC_PINS.length} 处：`
+  + (DOC_PINS.map((m) => m[1] + ' / ' + m[2]).join(' + ') || '一处都没有'));
 
 // 自计数：闸缩水必须先自己红。比较发生在计数之前，所以这里比的是「含这一条」的总数。
 ok(rows + 1 === EXPECT_ROWS, `R13 这一次跑出的断言条数（含这一条）等于钉在文件里的 EXPECT_ROWS（${EXPECT_ROWS}）`,

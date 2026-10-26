@@ -16,6 +16,8 @@
 // refuses — so a stray pixel can never bill a ply. The playtest asserts exactly that.
 
 import { MISERE, NORMAL, isTerminal, total } from './core/heaps.js';
+// 触觉是第三路反馈：`navigator.vibrate` 在 iOS Safari 上不存在，模块自己会空操作。
+import { haptics } from './haptics.js';
 import { verdict, winningMoves } from './core/bouton.js';
 import { rationale } from './core/ai.js';
 import { createGame, grade, play, reset, setRule, status, undo } from './core/game.js';
@@ -328,6 +330,7 @@ function settleRecord() {
   }
   if (session.route.kind === 'daily') store.markDaily(session.dailyKey, g.id);
   sound.chord(won ? 'win' : 'lose', 0.12);
+  if (won) haptics.correct();
 }
 
 function goNext() {
@@ -342,11 +345,13 @@ function takeTap(hitAt) {
   if (session.phase === 'paused') {
     say('已暂停：按 Space 或 P 继续');
     sound.blip('refuse');
+  haptics.wrong();
     return;
   }
   if (g.done) {
     say('这一局已经结束了：按「重开」或「下一关」');
     sound.blip('refuse');
+  haptics.wrong();
     return;
   }
   if (!hitAt) {
@@ -358,10 +363,12 @@ function takeTap(hitAt) {
     if (!g.heaps[hitAt.i]) {
       say('那一堆是空的');
       sound.blip('refuse');
+  haptics.wrong();
       return;
     }
     session.selected = hitAt.i;
     sound.blip('lift');
+  haptics.tap();
     draw();
     return;
   }
@@ -370,6 +377,7 @@ function takeTap(hitAt) {
     // turn a cross-heap tap into anything at all: no ply, no reply, no history entry.
     say('一次只能动一堆：先点棋盘空白处放下抬起的那堆');
     sound.blip('refuse');
+  haptics.wrong();
     return;
   }
   const move = { i: session.selected, to: hitAt.to };
@@ -379,6 +387,7 @@ function takeTap(hitAt) {
     say(r.reason);
     session.selected = -1;
     sound.blip('refuse');
+  haptics.wrong();
     draw();
     return;
   }
@@ -409,11 +418,13 @@ el.undo.addEventListener('click', () => {
   if (!undo(session.game)) {
     say('还没有可回退的一步');
     sound.blip('refuse');
+  haptics.wrong();
     return;
   }
   session.selected = -1;
   session.log.push({ side: 'you', text: '回退一手（连同对手的回应一起收回）' });
   sound.blip('lift');
+  haptics.tap();
   draw();
 });
 
@@ -427,6 +438,7 @@ function restartNow() {
   session.phase = 'playing';
   sim.reset();
   sound.blip('pick');
+  haptics.tap();
   dirty = true;
   draw();
 }
