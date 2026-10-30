@@ -31,11 +31,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSEMBLE = 'tools/assemble-site.sh';
 // R 段实际检查的路径条数。改页面/清单会改变它——那正是要它变的时候；没改页面却掉了，
 // 说明引用解析不出来的那部分被悄悄放过了。对着 DEPLOY_SET_DUMP=1 的出处表能逐条核。
-const EXPECT_CHECKS = 31;
+const EXPECT_CHECKS = 43;
 // 全绿时这个闸实际跑的断言条数（W/R/P 三段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 51;
+const EXPECT_ROWS = 63;
 
 let rows = 0;
 const fails = [];
@@ -129,6 +129,8 @@ const SELF_REL = /['"](\.{1,2}\/[^'"\n]+)['"]/g;
 // 一行、`.register(...)` 下一行），而这一条只用来决定**同一个字符串以什么为基**——认不出调用点
 // 不会少查一条引用，只会让它退回按本文件解析，于是把一行正确的 register('./sw.js') 报成缺文件。
 const CALL_SITES = [
+  // img.src = './assets/x.png'：浏览器按**文档**基解析，不是按本模块路径。
+  [/\.src\s*=\s*['"](\.{1,2}\/[^'"]+)['"]/g, false],
   [/new URL\(\s*['"]([^'"]+)['"]\s*,\s*document\.baseURI/g, false],
   [/new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url/g, true],
   [/navigator\s*\.\s*serviceWorker\s*\.\s*register\(\s*['"]([^'"]+)['"]/g, false],
@@ -251,7 +253,10 @@ for (let k = 0; k < refs.length; k += 1) {
     continue;
   }
   if (r.endsWith('.css')) {
-    for (const m of stripComments(text, true).matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+    // data: URI 的载荷里可以再嵌 url(...)——studio.css 那张噪声纹理的 filter='url(%23n)'
+    // 就是这个形状。它不是站内文件，整段挖掉再扫，否则 %23n 会被报成缺了一个产物。
+    const css = stripComments(text, true).replace(/url\(\s*(['"]?)data:[\s\S]*?\1\s*\)/g, 'url(data:)');
+    for (const m of css.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
       push(r, m[1], dirOf(r));
     }
     continue;
@@ -265,7 +270,14 @@ for (let k = 0; k < refs.length; k += 1) {
     for (const m of code.matchAll(re)) { push(r, m[1], perFile ? dirOf(r) : ''); claimed.add(m[1]); }
   }
   for (const m of code.matchAll(SELF_REL)) {
-    if (!claimed.has(m[1])) push(r, m[1], dirOf(r));
+    if (claimed.has(m[1])) continue;
+    // './x' 有两种基：import 说明符相对本文件，交给 DOM 的 URL（img.src 之类）相对文档。
+    // 没有调用点可依时，按盘上真有的那条定基；两条都不在就保持模块基，让缺文件照常红。
+    const asModule = resolveSpec(m[1], dirOf(r));
+    const asDoc = resolveSpec(m[1], '');
+    const base = asModule !== asDoc && !fs.existsSync(path.join(ROOT, asModule))
+      && fs.existsSync(path.join(ROOT, asDoc)) ? '' : dirOf(r);
+    push(r, m[1], base);
   }
 }
 

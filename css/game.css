@@ -53,7 +53,7 @@ a { color: var(--ink); text-decoration: none; }
 .hud button[aria-pressed="true"], .hud button[aria-expanded="true"] { border-color: var(--pick); color: var(--pick); }
 .totals { margin: 0 0 0 auto; color: var(--ink-dim); font-size: 12px; }
 
-.stage { display: grid; gap: 14px; max-width: 1180px; margin: 0 auto;
+.stage { display: grid; align-items: start; gap: 14px; max-width: 1180px; margin: 0 auto;
   padding: 14px calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left)); }
 @media (min-width: 820px) { .stage { grid-template-columns: minmax(0, 1fr) 320px; } }
 /* 鼠标设备上货架那一格 44px 会把 54 关摊成一屏都放不下；触屏才放大到手指尺寸。 */

@@ -113,7 +113,7 @@ test('a working localStorage is written through and read back by a fresh page', 
   eq(lsDisk.data.size, 1, 'the save lives in exactly one key, no scratch data beside it');
   ok(lsDisk.sets >= 3, `${lsDisk.sets} writes went through to disk`);
   const parsed = JSON.parse(raw);
-  eq(Object.keys(parsed).sort(), ['daily', 'records', 'stats', 'unlocked', 'v'], 'the versioned shape');
+  eq(Object.keys(parsed).sort(), ['daily', 'records', 'settings', 'stats', 'unlocked', 'v'], 'the versioned shape');
   eq(parsed.records['nerve-03'].best, 12);
   eq(parsed.unlocked, 7);
   eq(parsed.stats, { plays: 1, wins: 1, losses: 0, plies: 12 });
@@ -184,7 +184,9 @@ test('一条垃圾记录只作废它自己，丢掉几条是可数的', () => {
   eq(rotted.droppedBadRecords(), 3, '面板要能印出"这次丢了几条"');
   eq(rotted.record('spark-01'), { plays: 3, won: true, best: 8, perfect: true, lastWon: true, lastPlies: 8, par: 8 },
     '被读出来的好记录一个字节也没被动');
-  eq(rotted.record('spark-05'), { plays: 1, won: false, lastPlies: 12 }, '没赢过的那条也原样留着，不补一个 best');
+  eq(rotted.record('spark-05'),
+    { plays: 1, won: false, best: null, perfect: false, lastWon: false, lastPlies: 12, par: null },
+    '没赢过的那条留着，best 是 null —— 读档只归一形状，不替它编一个成绩');
   eq(rotted.unlocked, 6, '一条坏记录不该把战役进度也带走');
   eq(rotted.stats, { plays: 6, wins: 3, losses: 3, plies: 90 }, '总账同样照读');
   eq(Object.keys(rotted.daily), ['2026-09-29'], 'daily 里 id 不是字符串的那格被丢掉');
@@ -206,7 +208,7 @@ test('a half-valid save falls back field by field, not all or nothing', () => {
   eq(halved.unlocked, 1, '"0" is not an unlock count');
   eq(halved.stats, { plays: 0, wins: 0, losses: 0, plies: 0 }, 'stats: null became the blank shape');
   eq(halved.daily, {}, 'daily: "no" became an empty log');
-  eq(halved.record('knife-01'), { plays: 0, won: true, lastWon: false, lastPlies: 0, best: null, perfect: false, par: null },
+  eq(halved.record('knife-01'), { plays: 0, won: true, best: null, perfect: false, lastWon: false, lastPlies: 0, par: null },
     'a half-written record is normalised field by field to the blank shape, not passed through');
   const fixed = halved.finish('knife-01', { won: true, plies: 13, par: 11 });
   eq(fixed.plays, 1, 'a record with no plays field restarts at 1 instead of going NaN');

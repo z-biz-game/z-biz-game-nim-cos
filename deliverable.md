@@ -19,14 +19,14 @@
 |---|---|---|
 | **App 名称** | 尼姆堆 | `head -1 README.md` → `# 尼姆堆 · NIM`（取中文部分） |
 | 仓 | `/Users/zifang/workplace/ceo_workplace/z-biz-game/z-biz-game-nim-cos` | — |
-| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:57-64`）；`node tools/playtest.mjs eval @routes` |
-| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:457`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
+| 显示名 / 路由 | `#/lot/<id>`、`#/daily`（认不出的地址落回战役并弹提示，不偷换成随机关卡） | `parseRoute`（`js/main.js:73`）；`node tools/playtest.mjs eval @routes` |
+| 测试钩子 | `window.nim` | `window.nim`（`js/main.js:660`）；`bash tools/verify.sh` 的 boot 轮询读它（回显 `boot lot: spark-01`） |
 | 主张 | `outcome`/`winMoves` 由 Bouton 闭式给出，`par` 由完整倒推分析给出，两者**逐态对账** | `node --test test/retrograde.test.mjs`、`node tools/bake.mjs` |
-| node 层 | 56 行具名检查 / **11,196 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
-| 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | 最后一次真实跑是 2026-10-02 之前；本轮派工单禁起 Chrome，**未复跑**，见文末 |
+| node 层 | 66 行具名检查 / **11,355 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
+| 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | 2026-10-30 本轮复跑：`bash tools/verify.sh` → `=== ALL GREEN ===` |
 | 台架端口 | 网页 **:5193**，DevTools **:9353**（不撞 :5180/:9340 与兄弟仓的 :5181/:9341、:5185-:5192/:9344-9352） | `tools/verify.sh:20-22`；开头有端口被占的自检 `exit 9` |
-| 依赖 | `dependencies {}`、`devDependencies {}`；位图是生成物：`assets/gen/make_art.py` 现算 17 张 PNG，重跑 md5 逐字节一致 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"`；`python3 assets/gen/make_art.py && md5 -r assets/**/*.png` |
-| node 层 | 55 行具名检查 / **11,162 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
+| 依赖 | `dependencies {}`、`devDependencies {}`；位图是生成物：`assets/gen/make_art.py` 现算 17 张 PNG，重跑尺寸一致（逐字节只绑定同一套 Pillow/字体版本） | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"`；`python3 assets/gen/make_art.py && md5 -r assets/**/*.png` |
+| node 层 | 66 行具名检查 / **11,355 条实际执行的断言** / fail 0 | `bash tools/verify.sh`（或 `node --test test/`） |
 | 浏览器层 | **126 行** / fail 0，六段 `@boot @play @routes @save @reloaded @pointer`，console 干净 | `bash tools/verify.sh`；只跑台架：`SKIP_UNIT=1 SCENARIOS=pointer bash tools/verify.sh` |
 | 台架端口 | 网页 **:5193**，DevTools **:9353**（不撞 :5180/:9340 与兄弟仓的 :5181/:9341、:5185-:5192/:9344-9352） | `tools/verify.sh:22` 的 `CDP_PORT`、`tools/verify.sh:23` 的 `WEB_PORT`；开头有端口被占的自检 `exit 9` |
 | 依赖 | `dependencies {}`、`devDependencies {}`，零二进制资产 | `node -e "const p=require('./package.json');console.log(p.dependencies,p.devDependencies)"` |
@@ -74,7 +74,7 @@
 | 7 | `js/core/retro.js` 与 `tools/bake.mjs` 的注释声称"k≤4、n≤11 网格，20,736 状态 / 456,192 边" | 磁盘上的引擎是 `MAX_VEC = [9,9,9,9]` = **10,000 状态 / 180,000 反向边**，最宽的自有可达盒是 4,032；那两个数是别的仓带过来的。计时也重测：两遍规则 ≈ 20 ms、最宽盒 ≈ 6 ms、整次烘焙 0.14 s | `node tools/bake.mjs` 第一行回显 `engine: grid 9x9x9x9 = 10000 positions, 180000 edges`；`test/retrograde.test.mjs` 的网格规模行 |
 | 8 | `server.cjs` 启动横幅写 "Gridlock served"、`electron/main.cjs` 窗口标题写"死锁车库 Gridlock"、默认端口 5180（gridlock 的） | 复制粘贴残留：标题与端口都会指到别的仓。改成 Nim / 尼姆堆 · NIM / :5193 | 实跑 `node server.cjs 5193`；`verify.sh` 的 web 就绪轮询 |
 | 9 | `js/core/rng.js` 头注释说"每日题与 `?seed=` 链接解析到同一个 traffic jam" | 一是别的仓的名词，二是本仓分享的是 `#/lot/<id>` 而非 `?seed=`。重写时补上契约要求的确定性措辞：`hashSeed` 是 FNV-1a **派生**的两轮 UTF-16 混合，**不是**教科书 FNV-1a（`hashSeed('a') = 723832900` vs 公开向量 `3826002220`），且测试不断言任何公开向量 | `node -e "import('./js/core/rng.js').then(m=>console.log(m.hashSeed('a')))"` → `723832900`；`test/library.test.mjs` 的 rng 行（只断自洽） |
-| 10 | `tools/harness.mjs` 只印 `rows:`，于是"断言数"只能靠 grep 猜 | 现在 `ok/eq/fail` 各自计数并印 `asserts:`：抛在第三行的行只贡献 1 条断言 + 1 条失败，两个数都没法靠没跑到的代码灌水 | `bash tools/verify.sh` 的 `node total: rows 55 asserts 11162` |
+| 10 | `tools/harness.mjs` 只印 `rows:`，于是"断言数"只能靠 grep 猜 | 现在 `ok/eq/fail` 各自计数并印 `asserts:`：抛在第三行的行只贡献 1 条断言 + 1 条失败，两个数都没法靠没跑到的代码灌水 | `bash tools/verify.sh` 的 `node total: rows 66 asserts 11355` |
 | 11 | 台架里两条断言一开始写错（不是应用错）：① 以为"取 0 枚"的第一下点击就会弹拒绝（其实那一下只是抬起）；② 用 `getComputedStyle(next).display === 'none'` 判断按钮不可点 | ① 两下手势：第一下抬起、第二下才提交，所以拒绝要两次点击才发生；② Chrome 对隐藏子树里的元素仍回报**指定值** `block`，只有盒子是真的不存在——改判 `getBoundingClientRect().width === 0 && offsetParent === null` | `@play` "asking to take nothing is refused…"、`@pointer` "the top strip is a real click, and taking no stones is not a move"、`@routes` "下一关 is not on screen until the game is over" |
 | 12 | `verify.sh` 第一版把 browser 的 asserts 与 rows 印成同一个数 | 那是伪造计数。浏览器段现在只报 rows，并说明每行是一条断言、其中几行扫的是整张 54 行产物（它比对过的比较次数写在行的 detail 里） | `bash tools/verify.sh` 的 `browser total: rows 126 …` |
 
@@ -91,15 +91,17 @@
 === node suites ===
 --- test/anchor.test.mjs
 rows: 11 asserts: 84 fail: 0
+--- test/framerate.test.mjs
+rows: 9 asserts: 87 fail: 0
 --- test/game.test.mjs
 rows: 11 asserts: 6245 fail: 0
 --- test/library.test.mjs
-rows: 10 asserts: 3076 fail: 0
+rows: 11 asserts: 3168 fail: 0
 --- test/retrograde.test.mjs
 rows: 11 asserts: 1648 fail: 0
 --- test/storage.test.mjs
-rows: 12 asserts: 109 fail: 0
-node total: rows 55 asserts 11162
+rows: 13 asserts: 123 fail: 0
+node total: rows 66 asserts 11355
 opened http://127.0.0.1:5193/
 (no console output)
 boot lot: spark-01
@@ -161,7 +163,7 @@ wrote 54 lots -> js/data/lots.js
 
 | 契约要求 | 本仓状态 |
 |---|---|
-| node ≥ 45 条断言 | 55 行 / 11,162 条实跑断言 |
+| node ≥ 45 条断言 | 66 行 / 11,355 条实跑断言 |
 | 浏览器 ≥ 40 条断言，五段齐备 | 126 行，六段（多出 `@reloaded`） |
 | 真实输入事件段 | `@pointer`：CDP `Input.dispatchMouseEvent` 走完一条认证必胜线并停在 `par`；断言跨堆点击不计、取 0 枚不计、空堆抬不起、空白处点击只放下、按钮在结算前点不着 |
 | 唯一解/最短性有反证 | 规划/逻辑之外的第三条路：**闭式 vs 全量倒推**，512 状态 0 处不一致；两规则分歧区域被统计并限定在"所有堆 ≤ 1"；另有独立 minimax 与浏览器第四意见 |
@@ -257,12 +259,12 @@ runner 侧同一 sha 的三个 job 自己打印出来的（不是本机数字搬
 全部 `fail: 0`、`browser total: rows 126`、`=== ALL GREEN ===`，job conclusion success。
 
 主代理门禁（本机 headless Chrome，DevTools :9353 / web :5193）：`npm run check` rc=0；
-node **55 / 0 fail**；浏览器 **126 / 0 fail** 且 `=== ALL GREEN ===`；zero-deps、0 个二进制资产、
+node **66 / 0 fail**；浏览器 **126 / 0 fail** 且 `=== ALL GREEN ===`；zero-deps、0 个二进制资产、
 core purity clean、无幽灵导出、无密钥样式串。
 
 一处必须写下来的返工：发布前门禁报过 `ghostExports(js/core/heaps.js: encode, decode, describe)`。
 查证后三者在全仓（含 `test/`、`tools/`，也含 heaps.js 自身）都是**零引用**：分享链接走的是
-`#/lot/<id>`（`js/main.js:415`），棋谱文字由 `js/main.js:266` 的 `text` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
+`#/lot/<id>`（`js/main.js:78`），棋谱文字由 `js/main.js:312` 的 `text` 自己拼（`第 X 堆 W→T（取走 N 枚）`，
 比 `describe` 更信息完整）。所以按"确定未使用就彻底删掉"处理，三个函数一并删除；删掉 `describe`
 之后 `taken` 也失去唯一调用者，同样移除。README/DESIGN/deliverable 三处文档都从未提到这四个名字
 （已 grep 核对），因此不产生文档漂移。
@@ -293,7 +295,7 @@ core purity clean、无幽灵导出、无密钥样式串。
 - 暂停与静音：暂停中连喂 120 帧 → 推进 0 步、累加器增量 0.000000000，恢复 60 帧后精确 240 步；
   静音态 36 声（含和弦）→ 新建振荡器 0 个、`skipped=36`、`ctx.state=suspended`，静音态里 `resume()`
   也不把时钟开回来；没有 AudioContext 时 `refused=5` 且不抛异常。
-- 单元：`node --check` 6/6 OK；5 个 suite 全绿 —— 84 / 6245 / 3096 / 1648 / 123 = **11,196 条断言、56 行、fail 0**；
+- 单元：`node --check` 6/6 OK；6 个 suite 全绿 —— 84 / 87 / 6245 / 3168 / 1648 / 123 = **11,355 条断言、66 行、fail 0**；
   `cos_load_sweep.js .` → `LOADED`。
 - 官方量具读不出来的一处（不是仓库缺陷）：`cos_frame_probe.js` 以 `vm.runInContext` 当 classic script 加载，
   本仓是 ESM，三档全报 `SyntaxError: Cannot use import statement outside a module` → 结论"无法比对"。

@@ -491,7 +491,7 @@ const SCENARIOS = {
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const s = g.state;
 
-    rec('the shell boots straight into a game', g.version === 1 && !!s.id && !!s.par, s);
+    rec('the shell boots straight into a game', g.version === 2 && !!s.id && !!s.par, s);
     rec('the URL it settled on is a shareable lot link', location.hash === '#/lot/' + s.id, { hash: location.hash, id: s.id });
     rec('the canvas has real pixels', c.width > 0 && c.height > 0 && !!c.getContext('2d'), { w: c.width, h: c.height });
     // A canvas whose stylesheet never arrived is still the 300x150 box the HTML spec hands

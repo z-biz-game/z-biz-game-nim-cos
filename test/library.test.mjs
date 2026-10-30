@@ -8,10 +8,10 @@
 // ship a position the classifier calls a loss, and this file goes red.
 
 import { test, run, ok, eq } from '../tools/harness.mjs';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ALL, BANDS, BAND_INDEX, ENGINE_META, bandByKey, byId, campaign, dailyLot, levelAt, lotsIn,
@@ -348,8 +348,8 @@ test('the browser cannot search: nothing it loads imports the solver or the gene
   const html = readFileSync(join(root, 'index.html'), 'utf8');
   // 图标这条从"用 data: 挡掉请求"换成了"盘上真有位图"：可安装要的是 192/512 的 PNG，
   // 一张 data: 空图既装不上桌面也上不了商店。仍然不外链——href 全部是同仓相对路径。
-  for (const rel of ['./assets/icons/icon-32.png', './assets/icons/icon-192.png',
-    './assets/icons/apple-touch-icon.png', './manifest.webmanifest']) {
+  for (const rel of ['icons/favicon-32.png', 'icons/favicon-16.png',
+    'icons/apple-touch-icon.png', 'manifest.webmanifest']) {
     ok(html.includes(`href="${rel}"`), `index.html 没有接上 ${rel}`);
     ok(existsSync(join(root, rel.replace(/^\.\//, ''))), `${rel} 被引用但盘上没有`);
   }
@@ -367,6 +367,7 @@ test('the browser cannot search: nothing it loads imports the solver or the gene
 // 商店与爬虫要的是 192/512/180 的真位图，一张 0 字节占位或 SVG 改扩展名都能骗过"存在"，
 // 骗不过尺寸对账。生成器可复现这条也在这里：美术不是手画一次就没人能重画的东西。
 test('every art asset the code names is a real PNG of the size it claims', () => {
+  const html = readFileSync(join(root, 'index.html'), 'utf8');
   const files = ['index.html', 'manifest.webmanifest', 'sw.js', 'css/game.css', 'electron/main.cjs'];
   for (const d of readdirSync(join(root, 'js'), { recursive: true })) {
     if (String(d).endsWith('.js')) files.push(join('js', String(d)));
@@ -374,10 +375,13 @@ test('every art asset the code names is a real PNG of the size it claims', () =>
   const refs = new Map();
   for (const f of files) {
     const src = readFileSync(join(root, f), 'utf8');
-    for (const m of src.matchAll(/['"(]\.?\/?(assets\/[A-Za-z0-9._/-]+\.png)['")]/g)) {
+    for (const m of src.matchAll(/['"(]\.?\/?((?:assets|icons)\/[A-Za-z0-9._/-]+\.png)['")]/g)) {
       if (!refs.has(m[1])) refs.set(m[1], f);
     }
   }
+  // 社交卡写在 og:image 的绝对 URL 里，抓取器要的那张也得像其它位图一样是真 PNG。
+  const ogRel = 'assets/og/og-card.png';
+  if (html.includes(ogRel)) refs.set(ogRel, 'index.html(og:image)');
   ok(refs.size >= 12, `只扫出 ${refs.size} 条资产引用，审计本身退化了`);
   for (const [rel, from] of refs) {
     const abs = join(root, rel);
@@ -406,12 +410,31 @@ test('every art asset the code names is a real PNG of the size it claims', () =>
     console.log('  skip  生成器复现：这台机器没有 Pillow');
     return;
   }
-  const before = new Map();
-  for (const [rel] of refs) before.set(rel, createHash('sha256').update(readFileSync(join(root, rel))).digest('hex'));
-  const rerun = spawnSync('python3', [join(root, 'assets/gen/make_art.py')], { encoding: 'utf8' });
-  eq(rerun.status, 0, `生成器跑挂了：${rerun.stderr}`);
-  for (const [rel, sum] of before) {
-    eq(createHash('sha256').update(readFileSync(join(root, rel))).digest('hex'), sum, `${rel} 重画后变了：生成器不可复现`);
+  // 重画在临时目录里跑：生成器按脚本位置推 ROOT，把 assets/gen 整支复制过去，输出就落在
+  // 临时树，不碰工作树里已被跟踪的位图（上一版原地跑，一次红就把 13 张 PNG 改脏）。
+  const scratch = mkdtempSync(join(tmpdir(), 'nim-art-'));
+  try {
+    cpSync(join(root, 'assets/gen'), join(scratch, 'assets/gen'), { recursive: true });
+    const rerun = spawnSync('python3', [join(scratch, 'assets/gen/make_art.py')], { encoding: 'utf8' });
+    eq(rerun.status, 0, `生成器跑挂了：${rerun.stderr}`);
+    const made = new Map();
+    for (const line of rerun.stdout.split('\n')) {
+      const m = line.match(/^(\S+)\s+(\d+)x(\d+)\s/);
+      if (m) made.set(m[1], [Number(m[2]), Number(m[3])]);
+    }
+    ok(made.size >= 10, `生成器只报出 ${made.size} 张图，产出清单退化了`);
+    for (const rel of refs.keys()) {
+      // 只有 assets/ 下的位图由 generator 现算；icons/ 是从那套图标导出的站内副本。
+      if (!rel.startsWith('assets/')) continue;
+      ok(made.has(rel), `${rel} 被代码引用，但生成器不再产出它`);
+      // 判尺寸而不是判字节：逐字节相同只绑这一台机器的 Pillow/字体版本（Pillow 10.4.0
+      // 实测尺寸全同、字节不同），拿它当闸会把环境差异报成"美术脱节"。
+      ok(pngSize(join(scratch, rel)) !== null, `${rel} 重画结果不是 PNG`);
+      eq(pngSize(join(scratch, rel)), pngSize(join(root, rel)), `${rel} 重画尺寸与已提交的图不一致`);
+      eq(made.get(rel), pngSize(join(root, rel)), `${rel} 生成器自报尺寸与落盘 IHDR 不一致`);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 });
 
